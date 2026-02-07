@@ -1,0 +1,12 @@
+[VPN Connection]
+name=draytek
+service=org.freedesktop.NetworkManager.draytek
+program=/usr/lib/NetworkManager/nm-draytek-service
+supports-multiple-connections=false
+
+[libnm]
+plugin=libnm-vpn-plugin-draytek.so
+
+[GNOME]
+auth-dialog=/usr/libexec/nm-draytek-auth-dialog
+supports-external-ui-mode=true

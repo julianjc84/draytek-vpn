@@ -1,0 +1,13 @@
+# Build output
+target/
+
+# Claude Code
+.claude
+CLAUDE.md
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

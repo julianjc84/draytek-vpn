@@ -1,0 +1,18 @@
+[package]
+name = "draytek-vpn-tray"
+version = "0.1.0"
+edition = "2021"
+description = "DrayTek SSL VPN system tray indicator"
+
+[[bin]]
+name = "draytek-vpn-tray"
+path = "src/main.rs"
+
+[dependencies]
+ksni = "0.3"
+zbus = { version = "5", features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+anyhow = "1"

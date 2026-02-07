@@ -1,0 +1,30 @@
+[package]
+name = "draytek-vpn-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "DrayTek SSL VPN protocol stack (shared library)"
+
+[dependencies]
+# TLS
+openssl = "0.10"
+tokio-openssl = "0.6"
+
+# Async
+tokio = { version = "1", features = ["rt", "io-util", "time", "sync", "net"] }
+
+# Crypto (MS-CHAPv2 needs MD4, SHA1, DES)
+md4 = "0.10"
+sha1 = "0.10"
+des = "0.8"
+cipher = "0.4"
+digest = "0.10"
+
+# Utilities
+anyhow = "1"
+thiserror = "2"
+base64 = "0.22"
+bytes = "1"
+rand = "0.9"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
