@@ -14,13 +14,12 @@ The protocol implementation is a shared Rust library used by all components.
 
 ## Components
 
-The project has four components that can be used independently or together:
+The project has two main applications and a shared protocol library:
 
 | Component | Description | Use When |
 |-----------|-------------|----------|
 | **GUI App** | GTK4/libadwaita desktop application | You want a graphical interface to manage connections |
-| **NetworkManager Plugin** | Integrates into NM as a VPN provider | You want VPN in GNOME Settings / `nmcli` / system-managed |
-| **System Tray** | Status indicator in the system tray | You want to see VPN status, IP, and routes at a glance |
+| **NetworkManager Plugin** | Integrates into NM as a VPN provider, includes system tray | You want VPN in GNOME Settings / `nmcli` / system-managed |
 | **Protocol Library** | Shared crate implementing the full VPN protocol | Used internally by all components above |
 
 ### GUI App (`standalone/`)
@@ -45,7 +44,7 @@ The plugin consists of three parts:
 
 ### System Tray (`networkmanagertray/`)
 
-A lightweight system tray indicator that monitors NetworkManager over D-Bus. Shows VPN connection status with colored icons (green = connected, red = disconnected, amber = connecting), the assigned IP address, active routes, and traffic statistics. Runs in the background and starts automatically on login.
+A lightweight system tray indicator that monitors NetworkManager over D-Bus. Shows VPN connection status with colored icons (green = connected, red = disconnected, amber = connecting), the connected server, assigned IP address, active routes, connection duration, and traffic statistics. Automatically launches when a DrayTek VPN connects and closes when it disconnects — installed as part of `./build.sh nm install`.
 
 ### Protocol Library (`protocol/`)
 
@@ -88,8 +87,8 @@ Everything is managed through `./build.sh`:
 | Target | What it builds |
 |--------|----------------|
 | `app` | GUI app + privileged helper |
-| `nm` | NetworkManager plugin (Rust service + C editor + C auth-dialog) |
-| `tray` | System tray indicator |
+| `nm` | NetworkManager plugin (Rust service + C editor + C auth-dialog + tray dispatcher) |
+| `tray` | System tray indicator binary (installed automatically by `nm install`, use this to rebuild the binary only) |
 | `all` | All of the above |
 
 ### Actions
@@ -162,13 +161,15 @@ nmcli connection up "My DrayTek VPN"
 
 Or use GNOME Settings / KDE / Cinnamon — "DrayTek SSL VPN" will appear as a VPN type when adding a new connection.
 
-### Option 3: System Tray (alongside NetworkManager)
+### System Tray (automatic with NetworkManager)
+
+The tray indicator is installed automatically by `./build.sh nm install`. It launches when a DrayTek VPN connects and closes when it disconnects — no separate install needed.
+
+To rebuild just the tray binary (e.g. after code changes):
 
 ```bash
 ./build.sh tray install
 ```
-
-The tray indicator starts automatically on login. It monitors NM for DrayTek VPN connections and shows status, IP, routes, and traffic stats.
 
 ## NetworkManager Configuration Keys
 
@@ -225,15 +226,16 @@ draytek-vpn/
 │   │   └── tunnel.rs               #     Tunnel lifecycle
 │   ├── editor/                     #   C editor plugin (.so files)
 │   ├── auth-dialog/                #   C auth dialog
-│   └── data/                       #   D-Bus and NM config files
+│   └── data/
+│       ├── nm-draytek-service.name #     NM plugin metadata
+│       ├── nm-draytek-service.conf #     D-Bus policy
+│       └── 90-draytek-vpn-tray    #     NM dispatcher (auto-launches tray)
 │
 └── networkmanagertray/             # System tray indicator (Rust)
-    ├── src/
-    │   ├── nm_monitor.rs           #   NM D-Bus monitor
-    │   ├── tray_impl.rs            #   Menu and status rendering
-    │   └── icons.rs                #   Colored status icons
-    └── data/
-        └── draytek-vpn-tray.desktop # Autostart entry for tray
+    └── src/
+        ├── nm_monitor.rs           #   NM D-Bus monitor
+        ├── tray_impl.rs            #   Menu and status rendering
+        └── icons.rs                #   Colored status icons
 ```
 
 ## Testing
