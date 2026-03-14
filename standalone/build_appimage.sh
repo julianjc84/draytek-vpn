@@ -76,9 +76,18 @@ export PATH="$TOOLS_DIR:$PATH"
     --plugin gtk \
     --output appimage
 
+# ── Rename to consistent format ───────────────────────────────────
+VERSION=$(grep '^version' "$SCRIPT_DIR/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+APPIMAGE_OUT="$PROJECT_DIR/draytek-vpn-standalone_${VERSION}_x86_64.AppImage"
+# linuxdeploy names the file from the desktop Name field
+GENERATED=$(ls -t "$PROJECT_DIR"/*.AppImage 2>/dev/null | grep -v linuxdeploy | head -1)
+if [[ -n "$GENERATED" && "$GENERATED" != "$APPIMAGE_OUT" ]]; then
+    mv "$GENERATED" "$APPIMAGE_OUT"
+fi
+
 echo ""
 echo "AppImage built successfully:"
-ls -lh DrayTek_VPN*.AppImage 2>/dev/null || ls -lh draytek*.AppImage 2>/dev/null || ls -lh *.AppImage
+ls -lh "$APPIMAGE_OUT"
 echo ""
 echo "NOTE: The helper binary and polkit policy are bundled but need"
 echo "manual installation for privilege separation to work:"

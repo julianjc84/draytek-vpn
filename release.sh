@@ -81,21 +81,27 @@ info "All checks passed"
 # ── Build packages ─────────────────────────────────────────────────
 header "Building standalone app .deb"
 cargo deb -p draytek-vpn
-APP_DEB="target/debian/draytek-vpn_${VERSION}_amd64.deb"
+APP_DEB="target/debian/draytek-vpn-standalone_${VERSION}_amd64.deb"
 if [[ ! -f "$APP_DEB" ]]; then
-    APP_DEB=$(ls -t target/debian/draytek-vpn_*.deb 2>/dev/null | head -1)
+    APP_DEB=$(ls -t target/debian/draytek-vpn-standalone_*.deb 2>/dev/null | head -1)
 fi
 info "Built: $APP_DEB"
 
+header "Building standalone app AppImage"
+bash standalone/build_appimage.sh
+APP_APPIMAGE="draytek-vpn-standalone_${VERSION}_x86_64.AppImage"
+info "Built: $APP_APPIMAGE"
+
 header "Building NetworkManager plugin .deb"
 bash networkmanager/build_deb.sh
-NM_DEB="target/deb-nm/draytek-vpn-nm_${VERSION}_amd64.deb"
+NM_DEB="target/deb-nm/draytek-vpn-networkmanager_${VERSION}_amd64.deb"
 info "Built: $NM_DEB"
 
 # ── Summary ────────────────────────────────────────────────────────
 header "Build artifacts"
 echo ""
 ls -lh "$APP_DEB"
+ls -lh "$APP_APPIMAGE"
 ls -lh "$NM_DEB"
 echo ""
 
@@ -120,6 +126,7 @@ git push origin "$TAG"
 info "Creating release on GitHub"
 gh release create "$TAG" \
     "$APP_DEB" \
+    "$APP_APPIMAGE" \
     "$NM_DEB" \
     --title "$TAG — DrayTek SSL VPN Client for Linux" \
     --generate-notes

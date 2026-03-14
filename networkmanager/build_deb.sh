@@ -11,7 +11,7 @@ cd "$PROJECT_DIR"
 
 VERSION="0.1.0"
 ARCH="amd64"
-PKG_NAME="draytek-vpn-nm"
+PKG_NAME="draytek-vpn-networkmanager"
 PKG_DIR="$PROJECT_DIR/target/deb-nm/${PKG_NAME}_${VERSION}_${ARCH}"
 
 # ── Build everything ──────────────────────────────────────────────
