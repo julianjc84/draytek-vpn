@@ -33,12 +33,12 @@ fi
 get_session_user() {
     # Try loginctl first (systemd)
     if command -v loginctl >/dev/null 2>&1; then
-        loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid user seat _rest; do
-            if [ -n "$seat" ]; then
-                echo "$user"
-                return
-            fi
-        done
+        local user
+        user=$(loginctl list-sessions --no-legend 2>/dev/null | awk '$4 != "" { print $3; exit }')
+        if [ -n "$user" ]; then
+            echo "$user"
+            return
+        fi
     fi
     # Fallback: owner of the display server
     ps -eo user,comm --no-headers | grep -E '(Xorg|Xwayland|gnome-shell|cinnamon)' | head -1 | awk '{print $1}'
