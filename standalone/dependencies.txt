@@ -1,0 +1,6 @@
+# Build dependencies for DrayTek VPN standalone app
+build-essential
+pkg-config
+libgtk-4-dev
+libadwaita-1-dev
+libssl-dev

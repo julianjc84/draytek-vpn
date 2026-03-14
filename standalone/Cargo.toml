@@ -52,3 +52,19 @@ bytes = "1"
 digest = "0.10"
 libc = "0.2"
 time = { version = "0.3.47", features = ["formatting", "local-offset", "macros"] }
+
+[package.metadata.deb]
+maintainer = "Julian"
+section = "net"
+priority = "optional"
+depends = "libgtk-4-1, libadwaita-1-0, libssl3, polkit"
+assets = [
+    ["target/release/draytek-vpn", "usr/bin/", "755"],
+    ["target/release/draytek-vpn-helper", "usr/lib/draytek-vpn/", "755"],
+    ["data/com.draytek.vpn.policy", "usr/share/polkit-1/actions/", "644"],
+    ["data/draytek-vpn.desktop", "usr/share/applications/", "644"],
+]
+
+[profile.release]
+opt-level = 3
+lto = "thin"

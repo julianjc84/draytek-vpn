@@ -1,0 +1,9 @@
+# Build dependencies for DrayTek VPN NetworkManager plugin
+build-essential
+pkg-config
+libgtk-4-dev
+libgtk-3-dev
+libadwaita-1-dev
+libssl-dev
+libnm-dev
+gcc

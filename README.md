@@ -100,6 +100,8 @@ Everything is managed through `./build.sh`:
 | `install` | Build release + install system-wide (requires sudo) |
 | `run` | Build debug + launch immediately (app only) |
 | `uninstall` | Remove installed files (nm, tray) |
+| `deb` | Build .deb package (app, nm) |
+| `appimage` | Build AppImage (app only) |
 | `clean` | Remove C build artifacts |
 
 ### Examples
@@ -122,6 +124,37 @@ Everything is managed through `./build.sh`:
 
 # Remove the NM plugin
 ./build.sh nm uninstall
+```
+
+### Packaging
+
+```bash
+# Build .deb for the standalone app (uses cargo-deb)
+./build.sh app deb
+# → target/debian/draytek-vpn_0.1.0_amd64.deb
+
+# Build AppImage for the standalone app
+./build.sh app appimage
+# → DrayTek_VPN-x86_64.AppImage
+
+# Build .deb for the NetworkManager plugin (includes tray + dispatcher)
+./build.sh nm deb
+# → target/deb-nm/draytek-vpn-nm_0.1.0_amd64.deb
+```
+
+Install a .deb with:
+```bash
+sudo dpkg -i target/debian/draytek-vpn_0.1.0_amd64.deb
+```
+
+### Dependencies
+
+Install build dependencies before building:
+
+```bash
+./install_dependencies.sh app    # Standalone app deps
+./install_dependencies.sh nm     # NetworkManager plugin deps
+./install_dependencies.sh all    # Everything
 ```
 
 ## Quick Start
@@ -195,6 +228,7 @@ Password is stored in `vpn.secrets` under the key `password`.
 ```
 draytek-vpn/
 ├── build.sh                        # Build & install script for all components
+├── install_dependencies.sh         # Install build dependencies (Debian/Fedora)
 ├── Cargo.toml                      # Workspace root
 │
 ├── protocol/                       # Shared protocol library (Rust)
@@ -217,8 +251,10 @@ draytek-vpn/
 │   │   ├── config.rs               #   Profile persistence
 │   │   └── bin/
 │   │       └── draytek-vpn-helper.rs #   Privileged helper (runs via pkexec)
-│   └── data/
-│       └── com.draytek.vpn.policy  # Polkit policy for GUI app
+│   ├── data/
+│   │   ├── com.draytek.vpn.policy  # Polkit policy for GUI app
+│   │   └── draytek-vpn.desktop     # Desktop entry for app launchers
+│   └── build_appimage.sh           # AppImage builder
 │
 ├── networkmanager/                 # NetworkManager VPN plugin
 │   ├── src/                        #   Rust VPN service
@@ -226,10 +262,11 @@ draytek-vpn/
 │   │   └── tunnel.rs               #     Tunnel lifecycle
 │   ├── editor/                     #   C editor plugin (.so files)
 │   ├── auth-dialog/                #   C auth dialog
-│   └── data/
-│       ├── nm-draytek-service.name #     NM plugin metadata
-│       ├── nm-draytek-service.conf #     D-Bus policy
-│       └── 90-draytek-vpn-tray    #     NM dispatcher (auto-launches tray)
+│   ├── data/
+│   │   ├── nm-draytek-service.name #     NM plugin metadata
+│   │   ├── nm-draytek-service.conf #     D-Bus policy
+│   │   └── 90-draytek-vpn-tray    #     NM dispatcher (auto-launches tray)
+│   └── build_deb.sh               #   .deb package builder
 │
 └── networkmanagertray/             # System tray indicator (Rust)
     └── src/

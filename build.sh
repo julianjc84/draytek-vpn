@@ -23,6 +23,9 @@
 #   ./build.sh all                    Build everything (debug)
 #   ./build.sh all release            Build everything (release)
 #   ./build.sh all install            Build + install everything
+#   ./build.sh app deb                Build .deb package for standalone app
+#   ./build.sh app appimage           Build AppImage for standalone app
+#   ./build.sh nm deb                 Build .deb package for NM plugin
 #   ./build.sh clean                  Remove all build artifacts
 
 set -euo pipefail
@@ -81,6 +84,24 @@ app_run() {
     cargo run --bin draytek-vpn
 }
 
+app_deb() {
+    header "Standalone App .deb"
+    info "Building with cargo-deb"
+    if ! command -v cargo-deb &>/dev/null; then
+        info "Installing cargo-deb..."
+        cargo install cargo-deb
+    fi
+    cargo deb -p draytek-vpn
+    info "Package built:"
+    ls -lh target/debian/draytek-vpn_*.deb
+}
+
+app_appimage() {
+    header "Standalone App AppImage"
+    info "Running standalone/build_appimage.sh"
+    bash standalone/build_appimage.sh
+}
+
 # ── NM Plugin ──────────────────────────────────────────────────────
 
 nm_build() {
@@ -132,6 +153,12 @@ nm_install() {
     sudo systemctl restart NetworkManager
     info "Installed. DrayTek SSL VPN should appear in GNOME Settings > VPN."
     info "Tray indicator will auto-launch on VPN connect (requires draytek-vpn-tray in /usr/bin)."
+}
+
+nm_deb() {
+    header "NetworkManager Plugin .deb"
+    info "Running networkmanager/build_deb.sh"
+    bash networkmanager/build_deb.sh
 }
 
 nm_uninstall() {
@@ -212,13 +239,18 @@ Actions:
   install          Build release + install system-wide
   run              Build debug + launch (app only)
   uninstall        Remove installed files (nm, tray)
+  deb              Build .deb package (app, nm)
+  appimage         Build AppImage (app only)
 
   clean            Remove build artifacts (no target needed)
 
 Examples:
   ./build.sh app                Build standalone app (debug)
   ./build.sh app run            Build + launch the app
+  ./build.sh app deb            Build standalone app .deb package
+  ./build.sh app appimage       Build standalone app AppImage
   ./build.sh nm install         Build + install NM plugin
+  ./build.sh nm deb             Build NM plugin .deb package
   ./build.sh tray install       Build + install tray indicator
   ./build.sh all release        Build everything (release)
   ./build.sh clean              Clean C artifacts
@@ -238,6 +270,8 @@ case "$target" in
             release)    app_build release ;;
             install)    app_install ;;
             run)        app_run ;;
+            deb)        app_deb ;;
+            appimage)   app_appimage ;;
             *)          usage ;;
         esac
         ;;
@@ -247,6 +281,7 @@ case "$target" in
             release)    nm_build release ;;
             install)    nm_install ;;
             uninstall)  nm_uninstall ;;
+            deb)        nm_deb ;;
             *)          usage ;;
         esac
         ;;
