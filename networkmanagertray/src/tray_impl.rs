@@ -1,5 +1,5 @@
 use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use ksni::menu::{MenuItem, StandardItem};
 use ksni::{Status, ToolTip};
@@ -13,7 +13,8 @@ use crate::stats::NetStats;
 pub struct VpnTray {
     pub vpn_state: VpnState,
     pub stats: Option<NetStats>,
-    pub connected_since: Option<Instant>,
+    /// Unix epoch (seconds) when the VPN connection was activated by NM.
+    pub connected_at: Option<u64>,
     pub saved_vpns: Vec<SavedVpn>,
     pub disconnect_tx: mpsc::UnboundedSender<OwnedObjectPath>,
     pub connect_tx: mpsc::UnboundedSender<OwnedObjectPath>,
@@ -69,7 +70,7 @@ impl ksni::Tray for VpnTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        match &self.vpn_state {
+        let mut items = match &self.vpn_state {
             VpnState::Disconnected => {
                 let mut items: Vec<MenuItem<Self>> = Vec::new();
                 items.push(label("Disconnected"));
@@ -145,14 +146,18 @@ impl ksni::Tray for VpnTray {
             VpnState::Disconnecting => {
                 vec![label("Disconnecting...")]
             }
-            VpnState::Connected { name, ip, routes, path } => {
+            VpnState::Connected { name, ip, routes, path, .. } => {
                 let mut items: Vec<MenuItem<Self>> = Vec::new();
 
                 items.push(label(&format!("Connected: {name}")));
                 items.push(label(&format!("IP: {ip}")));
 
-                if let Some(since) = self.connected_since {
-                    let elapsed = since.elapsed().as_secs();
+                if let Some(at) = self.connected_at {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let elapsed = now.saturating_sub(at);
                     items.push(label(&format!("Time: {}", format_duration(elapsed))));
                 }
 
@@ -202,7 +207,27 @@ impl ksni::Tray for VpnTray {
 
                 items
             }
-        }
+        };
+
+        // Quit item — present in every state
+        items.push(MenuItem::Separator);
+        items.push(
+            StandardItem {
+                label: "Quit".to_string(),
+                enabled: true,
+                visible: true,
+                icon_name: String::new(),
+                icon_data: Vec::new(),
+                shortcut: Vec::new(),
+                disposition: ksni::menu::Disposition::Normal,
+                activate: Box::new(|_: &mut VpnTray| {
+                    std::process::exit(0);
+                }),
+            }
+            .into(),
+        );
+
+        items
     }
 }
 

@@ -36,7 +36,7 @@ NM_VPN_DIR="/usr/lib/NetworkManager/VPN"
 NM_SERVICE_DIR="/usr/lib/NetworkManager"
 DBUS_CONF_DIR="/etc/dbus-1/system.d"
 LIBEXEC_DIR="/usr/libexec"
-AUTOSTART_DIR="$HOME/.config/autostart"
+NM_DISPATCHER_DIR="/etc/NetworkManager/dispatcher.d"
 
 # ── Colors ─────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -71,7 +71,7 @@ app_install() {
 
     header "Install App"
     info "Installing polkit policy (requires sudo)"
-    sudo install -m 644 data/com.draytek.vpn.policy "$POLKIT_DIR/"
+    sudo install -m 644 standalone/data/com.draytek.vpn.policy "$POLKIT_DIR/"
     info "Done. Run with: cargo run --bin draytek-vpn"
 }
 
@@ -125,10 +125,13 @@ nm_install() {
         "$NM_VPN_DIR/"
     sudo install -m 644 networkmanager/data/nm-draytek-service.conf \
         "$DBUS_CONF_DIR/"
+    sudo install -m 755 networkmanager/data/90-draytek-vpn-tray \
+        "$NM_DISPATCHER_DIR/"
 
     info "Restarting NetworkManager..."
     sudo systemctl restart NetworkManager
     info "Installed. DrayTek SSL VPN should appear in GNOME Settings > VPN."
+    info "Tray indicator will auto-launch on VPN connect (requires draytek-vpn-tray in /usr/bin)."
 }
 
 nm_uninstall() {
@@ -142,6 +145,7 @@ nm_uninstall() {
     sudo rm -f "$LIBEXEC_DIR/nm-draytek-auth-dialog"
     sudo rm -f "$NM_VPN_DIR/nm-draytek-service.name"
     sudo rm -f "$DBUS_CONF_DIR/nm-draytek-service.conf"
+    sudo rm -f "$NM_DISPATCHER_DIR/90-draytek-vpn-tray"
 
     info "Restarting NetworkManager..."
     sudo systemctl restart NetworkManager
@@ -170,18 +174,13 @@ tray_install() {
     info "Installing binary (requires sudo)"
     sudo install -m 755 target/release/draytek-vpn-tray /usr/bin/
 
-    info "Installing autostart entry"
-    mkdir -p "$AUTOSTART_DIR"
-    install -m 644 data/draytek-vpn-tray.desktop "$AUTOSTART_DIR/"
-
-    info "Installed. Tray indicator will start on next login, or run: draytek-vpn-tray"
+    info "Installed. Tray launches automatically on VPN connect (via NM dispatcher)."
 }
 
 tray_uninstall() {
     header "Uninstall Tray Indicator"
     info "Removing files"
     sudo rm -f /usr/bin/draytek-vpn-tray
-    rm -f "$AUTOSTART_DIR/draytek-vpn-tray.desktop"
     info "Uninstalled."
 }
 

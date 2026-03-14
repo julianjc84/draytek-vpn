@@ -17,7 +17,7 @@ const SERVICE_TYPE: &str = "org.freedesktop.NetworkManager.draytek";
 pub enum VpnState {
     Disconnected,
     Connecting { name: String },
-    Connected { name: String, ip: String, routes: Vec<String>, path: OwnedObjectPath },
+    Connected { name: String, ip: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64 },
     Disconnecting,
 }
 
@@ -323,12 +323,14 @@ async fn handle_vpn_state(
         vpn_conn_state::ACTIVATED => {
             let ip = read_ip(conn, ac).await.unwrap_or_default();
             let routes = read_routes(conn, ac).await.unwrap_or_default();
-            info!("VPN connected: {name} ip={ip} routes={routes:?}");
+            let connected_at = read_connection_timestamp(conn, ac).await.unwrap_or(0);
+            info!("VPN connected: {name} ip={ip} routes={routes:?} timestamp={connected_at}");
             VpnState::Connected {
                 name: name.to_string(),
                 ip,
                 routes,
                 path: path.clone(),
+                connected_at,
             }
         }
         vpn_conn_state::FAILED | vpn_conn_state::DISCONNECTED | vpn_conn_state::UNKNOWN => {
@@ -389,6 +391,24 @@ async fn read_routes(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Optio
         .collect();
 
     if routes.is_empty() { None } else { Some(routes) }
+}
+
+/// Read the activation timestamp from the connection's settings.
+/// NM stores `connection.timestamp` as a Unix epoch (seconds) updated on activation.
+async fn read_connection_timestamp(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Option<u64> {
+    let settings_path = ac.connection().await.ok()?;
+    let sc = SettingsConnectionProxy::builder(conn)
+        .path(settings_path.as_ref())
+        .ok()?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
+        .ok()?;
+
+    let settings = sc.get_settings().await.ok()?;
+    let conn_section = settings.get("connection")?;
+    let timestamp: u64 = conn_section.get("timestamp")?.clone().try_into().ok()?;
+    Some(timestamp)
 }
 
 /// Disconnect a VPN connection by calling DeactivateConnection on NM.

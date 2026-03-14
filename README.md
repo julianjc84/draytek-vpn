@@ -23,7 +23,7 @@ The project has four components that can be used independently or together:
 | **System Tray** | Status indicator in the system tray | You want to see VPN status, IP, and routes at a glance |
 | **Protocol Library** | Shared crate implementing the full VPN protocol | Used internally by all components above |
 
-### GUI App (`src/`)
+### GUI App (`standalone/`)
 
 A standalone GTK4/libadwaita application for managing VPN connections. Saves connection profiles locally and provides a log view for debugging.
 
@@ -43,7 +43,7 @@ The plugin consists of three parts:
 | **Editor Plugin** | C | Settings UI that loads inside `nm-connection-editor` or GNOME Settings. Ships as three `.so` files — a base plugin plus GTK3 and GTK4 editors, with runtime detection to load the right one |
 | **Auth Dialog** | C | Provides the VPN password to NM when connecting |
 
-### System Tray (`tray/`)
+### System Tray (`networkmanagertray/`)
 
 A lightweight system tray indicator that monitors NetworkManager over D-Bus. Shows VPN connection status with colored icons (green = connected, red = disconnected, amber = connecting), the assigned IP address, active routes, and traffic statistics. Runs in the background and starts automatically on login.
 
@@ -138,7 +138,7 @@ Create a connection profile in the GUI, enter your router's address and credenti
 **Optional**: Install the Polkit policy for a nicer auth dialog with credential caching:
 
 ```bash
-sudo cp data/com.draytek.vpn.policy /usr/share/polkit-1/actions/
+sudo cp standalone/data/com.draytek.vpn.policy /usr/share/polkit-1/actions/
 ```
 
 ### Option 2: NetworkManager
@@ -208,13 +208,16 @@ draytek-vpn/
 │           ├── lcp.rs / ipcp.rs    #     LCP + IPCP options
 │           └── auth/               #     PAP + MS-CHAPv2
 │
-├── src/                            # GUI application (Rust, GTK4/libadwaita)
-│   ├── app.rs                      #   Application entry point
-│   ├── ui/                         #   Window, profile editor, connection view
-│   ├── tunnel/                     #   Tunnel orchestrator, TUN device
-│   ├── config.rs                   #   Profile persistence
-│   └── bin/
-│       └── draytek-vpn-helper.rs   #   Privileged helper (runs via pkexec)
+├── standalone/                     # GUI application (Rust, GTK4/libadwaita)
+│   ├── src/
+│   │   ├── app.rs                  #   Application entry point
+│   │   ├── ui/                     #   Window, profile editor, connection view
+│   │   ├── tunnel/                 #   Tunnel orchestrator, TUN device
+│   │   ├── config.rs               #   Profile persistence
+│   │   └── bin/
+│   │       └── draytek-vpn-helper.rs #   Privileged helper (runs via pkexec)
+│   └── data/
+│       └── com.draytek.vpn.policy  # Polkit policy for GUI app
 │
 ├── networkmanager/                 # NetworkManager VPN plugin
 │   ├── src/                        #   Rust VPN service
@@ -224,15 +227,13 @@ draytek-vpn/
 │   ├── auth-dialog/                #   C auth dialog
 │   └── data/                       #   D-Bus and NM config files
 │
-├── tray/                           # System tray indicator (Rust)
-│   └── src/
-│       ├── nm_monitor.rs           #   NM D-Bus monitor
-│       ├── tray_impl.rs           #   Menu and status rendering
-│       └── icons.rs                #   Colored status icons
-│
-└── data/
-    ├── com.draytek.vpn.policy      # Polkit policy for GUI app
-    └── draytek-vpn-tray.desktop    # Autostart entry for tray
+└── networkmanagertray/             # System tray indicator (Rust)
+    ├── src/
+    │   ├── nm_monitor.rs           #   NM D-Bus monitor
+    │   ├── tray_impl.rs            #   Menu and status rendering
+    │   └── icons.rs                #   Colored status icons
+    └── data/
+        └── draytek-vpn-tray.desktop # Autostart entry for tray
 ```
 
 ## Testing

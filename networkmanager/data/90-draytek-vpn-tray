@@ -1,0 +1,73 @@
+#!/bin/bash
+# NetworkManager dispatcher script — launches/stops the DrayTek VPN tray
+# indicator when a DrayTek SSL VPN connection activates or deactivates.
+#
+# Install to: /etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray
+# Must be owned by root and executable (chmod 755).
+#
+# NM runs dispatcher scripts as root. We launch the tray as the logged-in
+# user so it appears in their desktop session.
+
+TRAY_BIN="/usr/bin/draytek-vpn-tray"
+VPN_SERVICE="org.freedesktop.NetworkManager.draytek"
+
+INTERFACE="$1"
+ACTION="$2"
+
+# Only act on VPN events
+case "$ACTION" in
+    vpn-up|vpn-down) ;;
+    *) exit 0 ;;
+esac
+
+# Verify this is a DrayTek VPN connection (not some other VPN type).
+# NM sets CONNECTION_UUID for the triggering connection.
+if [ -n "$CONNECTION_UUID" ]; then
+    SERVICE=$(nmcli -t -f vpn.service-type connection show "$CONNECTION_UUID" 2>/dev/null)
+    if [ "$SERVICE" != "vpn.service-type:$VPN_SERVICE" ]; then
+        exit 0
+    fi
+fi
+
+# Find the graphical session user (the person logged into the desktop).
+get_session_user() {
+    # Try loginctl first (systemd)
+    if command -v loginctl >/dev/null 2>&1; then
+        loginctl list-sessions --no-legend 2>/dev/null | while read -r sid uid user seat _rest; do
+            if [ -n "$seat" ]; then
+                echo "$user"
+                return
+            fi
+        done
+    fi
+    # Fallback: owner of the display server
+    ps -eo user,comm --no-headers | grep -E '(Xorg|Xwayland|gnome-shell|cinnamon)' | head -1 | awk '{print $1}'
+}
+
+USER_NAME=$(get_session_user)
+if [ -z "$USER_NAME" ]; then
+    exit 0
+fi
+
+USER_ID=$(id -u "$USER_NAME" 2>/dev/null)
+if [ -z "$USER_ID" ]; then
+    exit 0
+fi
+
+case "$ACTION" in
+    vpn-up)
+        # Don't launch if already running for this user
+        if pgrep -u "$USER_ID" -f "$TRAY_BIN" >/dev/null 2>&1; then
+            exit 0
+        fi
+        # Launch the tray as the desktop user with their D-Bus session
+        DBUS_ADDR="unix:path=/run/user/${USER_ID}/bus"
+        su "$USER_NAME" -c "DBUS_SESSION_BUS_ADDRESS=$DBUS_ADDR nohup $TRAY_BIN >/dev/null 2>&1 &"
+        ;;
+    vpn-down)
+        # Stop the tray for this user
+        pkill -u "$USER_ID" -f "$TRAY_BIN" 2>/dev/null
+        ;;
+esac
+
+exit 0

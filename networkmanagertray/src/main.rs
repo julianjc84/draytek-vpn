@@ -4,7 +4,7 @@ mod nm_monitor;
 mod stats;
 mod tray_impl;
 
-use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use ksni::TrayMethods;
@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     let tray = VpnTray {
         vpn_state: VpnState::Disconnected,
         stats: None,
-        connected_since: None,
+        connected_at: None,
         saved_vpns,
         disconnect_tx,
         connect_tx,
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     });
 
     // Main loop: watch state changes + poll stats every 3s, update tray
-    let mut connected_since: Option<Instant> = None;
+    let mut connected_at: Option<u64> = None;
     let mut stats_interval = tokio::time::interval(std::time::Duration::from_secs(3));
     let mut state_rx = state_rx;
 
@@ -96,13 +96,20 @@ async fn main() -> Result<()> {
                 }
                 let new_state = state_rx.borrow_and_update().clone();
 
-                // Track connection start time
+                // Use NM's activation timestamp, fall back to current time
                 match &new_state {
-                    VpnState::Connected { .. } if connected_since.is_none() => {
-                        connected_since = Some(Instant::now());
+                    VpnState::Connected { connected_at: ts, .. } if connected_at.is_none() => {
+                        connected_at = Some(if *ts > 0 {
+                            *ts
+                        } else {
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0)
+                        });
                     }
                     VpnState::Disconnected | VpnState::Disconnecting => {
-                        connected_since = None;
+                        connected_at = None;
                     }
                     _ => {}
                 }
@@ -114,7 +121,7 @@ async fn main() -> Result<()> {
                     None
                 };
 
-                let since = connected_since;
+                let at = connected_at;
                 let stats = if matches!(new_state, VpnState::Connected { .. }) {
                     stats::read_stats().await
                 } else {
@@ -123,7 +130,7 @@ async fn main() -> Result<()> {
 
                 handle.update(|tray| {
                     tray.vpn_state = new_state;
-                    tray.connected_since = since;
+                    tray.connected_at = at;
                     tray.stats = stats;
                     if let Some(vpns) = saved {
                         tray.saved_vpns = vpns;
@@ -132,12 +139,12 @@ async fn main() -> Result<()> {
             }
             _ = stats_interval.tick() => {
                 // Only poll stats when connected
-                if connected_since.is_some() {
+                if connected_at.is_some() {
                     let net_stats = stats::read_stats().await;
-                    let since = connected_since;
+                    let at = connected_at;
                     handle.update(|tray| {
                         tray.stats = net_stats;
-                        tray.connected_since = since;
+                        tray.connected_at = at;
                     }).await;
                 }
             }
