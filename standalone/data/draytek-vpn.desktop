@@ -2,7 +2,7 @@
 Name=DrayTek VPN
 Comment=DrayTek SSL VPN client for Linux
 Exec=draytek-vpn
-Icon=network-vpn
+Icon=draytek-vpn
 Terminal=false
 Type=Application
 Categories=Network;System;
