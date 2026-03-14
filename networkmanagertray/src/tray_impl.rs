@@ -58,7 +58,36 @@ impl ksni::Tray for VpnTray {
         let description = match &self.vpn_state {
             VpnState::Disconnected => "Disconnected".to_string(),
             VpnState::Connecting { name } => format!("Connecting: {name}"),
-            VpnState::Connected { name, ip, .. } => format!("Connected: {name} ({ip})"),
+            VpnState::Connected { name, ip, gateway, routes, .. } => {
+                let mut lines = vec![
+                    format!("Connected: {name}"),
+                    format!("Server: {gateway}"),
+                    format!("IP: {ip}"),
+                ];
+                if let Some(at) = self.connected_at {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    lines.push(format!("Time: {}", format_duration(now.saturating_sub(at))));
+                }
+                for route in routes {
+                    lines.push(format!("Route: {route}"));
+                }
+                if let Some(stats) = &self.stats {
+                    lines.push(format!(
+                        "TX: {} ({} pkts)",
+                        format_bytes(stats.tx_bytes),
+                        format_packets(stats.tx_packets)
+                    ));
+                    lines.push(format!(
+                        "RX: {} ({} pkts)",
+                        format_bytes(stats.rx_bytes),
+                        format_packets(stats.rx_packets)
+                    ));
+                }
+                lines.join("\n")
+            }
             VpnState::Disconnecting => "Disconnecting...".to_string(),
         };
         ToolTip {
@@ -146,10 +175,11 @@ impl ksni::Tray for VpnTray {
             VpnState::Disconnecting => {
                 vec![label("Disconnecting...")]
             }
-            VpnState::Connected { name, ip, routes, path, .. } => {
+            VpnState::Connected { name, ip, gateway, routes, path, .. } => {
                 let mut items: Vec<MenuItem<Self>> = Vec::new();
 
                 items.push(label(&format!("Connected: {name}")));
+                items.push(label(&format!("Server: {gateway}")));
                 items.push(label(&format!("IP: {ip}")));
 
                 if let Some(at) = self.connected_at {

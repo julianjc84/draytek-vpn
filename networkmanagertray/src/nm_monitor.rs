@@ -17,7 +17,7 @@ const SERVICE_TYPE: &str = "org.freedesktop.NetworkManager.draytek";
 pub enum VpnState {
     Disconnected,
     Connecting { name: String },
-    Connected { name: String, ip: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64 },
+    Connected { name: String, ip: String, gateway: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64 },
     Disconnecting,
 }
 
@@ -322,12 +322,14 @@ async fn handle_vpn_state(
         }
         vpn_conn_state::ACTIVATED => {
             let ip = read_ip(conn, ac).await.unwrap_or_default();
+            let gateway = read_vpn_gateway(conn, ac).await.unwrap_or_default();
             let routes = read_routes(conn, ac).await.unwrap_or_default();
             let connected_at = read_connection_timestamp(conn, ac).await.unwrap_or(0);
-            info!("VPN connected: {name} ip={ip} routes={routes:?} timestamp={connected_at}");
+            info!("VPN connected: {name} ip={ip} gateway={gateway} routes={routes:?} timestamp={connected_at}");
             VpnState::Connected {
                 name: name.to_string(),
                 ip,
+                gateway,
                 routes,
                 path: path.clone(),
                 connected_at,
@@ -391,6 +393,25 @@ async fn read_routes(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Optio
         .collect();
 
     if routes.is_empty() { None } else { Some(routes) }
+}
+
+/// Read the VPN gateway (server address) from the connection's vpn.data settings.
+async fn read_vpn_gateway(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Option<String> {
+    let settings_path = ac.connection().await.ok()?;
+    let sc = SettingsConnectionProxy::builder(conn)
+        .path(settings_path.as_ref())
+        .ok()?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
+        .ok()?;
+
+    let settings = sc.get_settings().await.ok()?;
+    let vpn_section = settings.get("vpn")?;
+    let data: HashMap<String, String> = vpn_section.get("data")?.clone().try_into().ok()?;
+    let gateway = data.get("gateway")?.clone();
+    let port = data.get("port").cloned().unwrap_or_else(|| "443".to_string());
+    Some(format!("{gateway}:{port}"))
 }
 
 /// Read the activation timestamp from the connection's settings.

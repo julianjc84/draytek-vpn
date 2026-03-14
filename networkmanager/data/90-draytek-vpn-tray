@@ -56,17 +56,20 @@ fi
 
 case "$ACTION" in
     vpn-up)
-        # Don't launch if already running for this user
-        if pgrep -u "$USER_ID" -f "$TRAY_BIN" >/dev/null 2>&1; then
-            exit 0
-        fi
-        # Launch the tray as the desktop user with their D-Bus session
-        DBUS_ADDR="unix:path=/run/user/${USER_ID}/bus"
-        su "$USER_NAME" -c "DBUS_SESSION_BUS_ADDRESS=$DBUS_ADDR nohup $TRAY_BIN >/dev/null 2>&1 &"
+        # Kill any existing instances first (manual launches, stale processes)
+        pkill -u "$USER_ID" -f "draytek-vpn-tray" 2>/dev/null
+        sleep 0.5
+        # Launch the tray inside the user's graphical session
+        RUN_DIR="/run/user/${USER_ID}"
+        systemd-run --user --machine="$USER_NAME@" \
+            --setenv=DBUS_SESSION_BUS_ADDRESS="unix:path=${RUN_DIR}/bus" \
+            --setenv=XDG_RUNTIME_DIR="$RUN_DIR" \
+            --collect --no-block \
+            "$TRAY_BIN"
         ;;
     vpn-down)
-        # Stop the tray for this user
-        pkill -u "$USER_ID" -f "$TRAY_BIN" 2>/dev/null
+        # Stop all tray instances for this user
+        pkill -u "$USER_ID" -f "draytek-vpn-tray" 2>/dev/null
         ;;
 esac
 
