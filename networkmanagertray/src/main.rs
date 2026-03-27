@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
 
     // Main loop: watch state changes + poll stats every 3s, update tray
     let mut connected_at: Option<u64> = None;
-    let mut stats_interval = tokio::time::interval(std::time::Duration::from_secs(3));
+    let mut stats_interval = tokio::time::interval(std::time::Duration::from_secs(10));
     let mut state_rx = state_rx;
 
     loop {

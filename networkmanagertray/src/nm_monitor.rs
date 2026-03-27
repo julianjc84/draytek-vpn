@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
@@ -157,8 +157,28 @@ pub async fn monitor_vpn(state_tx: watch::Sender<VpnState>) -> Result<()> {
 
     loop {
         // Wait for ActiveConnections property to change
-        changes.next().await;
-        debug!("ActiveConnections changed");
+        if changes.next().await.is_none() {
+            // Stream ended — reconnect after a delay
+            warn!("ActiveConnections stream ended, restarting monitor");
+            return Ok(());
+        }
+
+        // Debounce: wait briefly then drain any queued signals
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        loop {
+            match changes.next().now_or_never() {
+                Some(Some(_)) => continue,  // drain buffered event
+                Some(None) => return Ok(()), // stream ended
+                None => break,               // no more buffered events
+            }
+        }
+
+        // Skip if we already have a watcher — no need to rescan
+        if !watched.lock().unwrap().is_empty() {
+            continue;
+        }
+
+        debug!("ActiveConnections changed, scanning for DrayTek VPN");
         check_active_connections(&conn, &nm, &state_tx, &watched).await;
     }
 }
