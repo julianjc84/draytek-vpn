@@ -1,5 +1,8 @@
 # Build output
 target/
+*.AppImage
+standalone/AppDir/
+standalone/appimage-tools/
 
 # Claude Code
 .claude
