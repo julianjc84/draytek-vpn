@@ -58,7 +58,7 @@ impl ksni::Tray for VpnTray {
         let description = match &self.vpn_state {
             VpnState::Disconnected => "Disconnected".to_string(),
             VpnState::Connecting { name } => format!("Connecting: {name}"),
-            VpnState::Connected { name, ip, gateway, routes, .. } => {
+            VpnState::Connected { name, ip, gateway, routes, keepalive, .. } => {
                 let mut lines = vec![
                     format!("Connected: {name}"),
                     format!("Server: {gateway}"),
@@ -71,6 +71,10 @@ impl ksni::Tray for VpnTray {
                         .unwrap_or(0);
                     lines.push(format!("Time: {}", format_duration(now.saturating_sub(at))));
                 }
+                lines.push(format!(
+                    "Keepalive: {}",
+                    if *keepalive { "Enabled" } else { "Disabled" }
+                ));
                 for route in routes {
                     lines.push(format!("Route: {route}"));
                 }
@@ -175,7 +179,7 @@ impl ksni::Tray for VpnTray {
             VpnState::Disconnecting => {
                 vec![label("Disconnecting...")]
             }
-            VpnState::Connected { name, ip, gateway, routes, path, .. } => {
+            VpnState::Connected { name, ip, gateway, routes, path, keepalive, .. } => {
                 let mut items: Vec<MenuItem<Self>> = Vec::new();
 
                 items.push(label(&format!("Connected: {name}")));
@@ -190,6 +194,11 @@ impl ksni::Tray for VpnTray {
                     let elapsed = now.saturating_sub(at);
                     items.push(label(&format!("Time: {}", format_duration(elapsed))));
                 }
+
+                items.push(label(&format!(
+                    "Keepalive: {}",
+                    if *keepalive { "Enabled" } else { "Disabled" }
+                )));
 
                 if !routes.is_empty() {
                     items.push(MenuItem::Separator);

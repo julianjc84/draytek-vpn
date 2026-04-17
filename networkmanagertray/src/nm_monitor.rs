@@ -17,7 +17,7 @@ const SERVICE_TYPE: &str = "org.freedesktop.NetworkManager.draytek";
 pub enum VpnState {
     Disconnected,
     Connecting { name: String },
-    Connected { name: String, ip: String, gateway: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64 },
+    Connected { name: String, ip: String, gateway: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64, keepalive: bool },
     Disconnecting,
 }
 
@@ -345,7 +345,8 @@ async fn handle_vpn_state(
             let gateway = read_vpn_gateway(conn, ac).await.unwrap_or_default();
             let routes = read_routes(conn, ac).await.unwrap_or_default();
             let connected_at = read_connection_timestamp(conn, ac).await.unwrap_or(0);
-            info!("VPN connected: {name} ip={ip} gateway={gateway} routes={routes:?} timestamp={connected_at}");
+            let keepalive = read_vpn_keepalive(conn, ac).await.unwrap_or(false);
+            info!("VPN connected: {name} ip={ip} gateway={gateway} routes={routes:?} timestamp={connected_at} keepalive={keepalive}");
             VpnState::Connected {
                 name: name.to_string(),
                 ip,
@@ -353,6 +354,7 @@ async fn handle_vpn_state(
                 routes,
                 path: path.clone(),
                 connected_at,
+                keepalive,
             }
         }
         vpn_conn_state::FAILED | vpn_conn_state::DISCONNECTED | vpn_conn_state::UNKNOWN => {
@@ -432,6 +434,23 @@ async fn read_vpn_gateway(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> 
     let gateway = data.get("gateway")?.clone();
     let port = data.get("port").cloned().unwrap_or_else(|| "443".to_string());
     Some(format!("{gateway}:{port}"))
+}
+
+/// Read the keepalive flag from the connection's vpn.data settings.
+async fn read_vpn_keepalive(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Option<bool> {
+    let settings_path = ac.connection().await.ok()?;
+    let sc = SettingsConnectionProxy::builder(conn)
+        .path(settings_path.as_ref())
+        .ok()?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
+        .ok()?;
+
+    let settings = sc.get_settings().await.ok()?;
+    let vpn_section = settings.get("vpn")?;
+    let data: HashMap<String, String> = vpn_section.get("data")?.clone().try_into().ok()?;
+    Some(data.get("keepalive").map(|v| v == "yes").unwrap_or(false))
 }
 
 /// Read the activation timestamp from the connection's settings.

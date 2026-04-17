@@ -244,11 +244,11 @@ arch_build() {
     local pkgdir="packaging/arch"
     header "Arch Package (makepkg)"
     if [ "$install_flag" = "install" ]; then
-        info "Building + installing via pacman (makepkg -si)"
-        ( cd "$pkgdir" && makepkg -si )
+        info "Building + installing via pacman (makepkg -fCsi)"
+        ( cd "$pkgdir" && rm -rf pkg src && makepkg -fCsi )
     else
         info "Building package (makepkg); use 'arch install' to install it"
-        ( cd "$pkgdir" && makepkg -f )
+        ( cd "$pkgdir" && rm -rf pkg src && makepkg -fC )
         info "Artifact:"
         ls -lh "$pkgdir"/*.pkg.tar.zst 2>/dev/null || true
     fi
