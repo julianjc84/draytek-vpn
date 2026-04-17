@@ -1,0 +1,92 @@
+# Maintainer: Julian <julian@jc84.com>
+pkgname=draytek-vpn-networkmanager
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="DrayTek SSL VPN NetworkManager plugin (service, editor, auth-dialog, tray)"
+arch=('x86_64')
+url="https://github.com/"
+license=('GPL3')
+depends=('networkmanager' 'gtk4' 'gtk3' 'openssl' 'glib2')
+makedepends=('rust' 'cargo' 'pkgconf' 'gcc' 'make')
+optdepends=('waybar: SNI tray host for Wayland compositors'
+            'libappindicator-gtk3: SNI tray host for GTK desktops')
+provides=('draytek-vpn-networkmanager')
+conflicts=('draytek-vpn-networkmanager')
+options=('!lto')
+install="$pkgname.install"
+
+# This PKGBUILD builds from the surrounding git checkout. Run `makepkg -si`
+# from this directory (packaging/arch/). No source tarball is fetched.
+source=()
+sha256sums=()
+
+_projectdir() {
+    # Resolve project root relative to PKGBUILD location.
+    printf '%s\n' "$(cd "$startdir/../.." && pwd)"
+}
+
+build() {
+    local root
+    root="$(_projectdir)"
+    cd "$root"
+
+    echo "==> Building NM service + tray (release)"
+    cargo build --release --locked -p draytek-vpn-nm -p draytek-vpn-tray
+
+    # Force clean rebuild of C components. The Makefiles don't track config
+    # changes (e.g. NM_PLUGIN_DIR), so cached .so files from a prior build
+    # could otherwise ship with the wrong embedded paths.
+    echo "==> Building editor plugin (.so)"
+    make -C networkmanager/editor clean
+    make -C networkmanager/editor
+
+    echo "==> Building auth-dialog"
+    make -C networkmanager/auth-dialog clean
+    make -C networkmanager/auth-dialog
+}
+
+package() {
+    local root
+    root="$(_projectdir)"
+    cd "$root"
+
+    # Arch NM plugin dir (no multiarch subdir).
+    local nm_plugindir="/usr/lib/NetworkManager"
+
+    # NM VPN service daemon
+    install -Dm755 target/release/draytek-vpn-nm \
+        "$pkgdir$nm_plugindir/nm-draytek-service"
+
+    # Editor plugins (base + GTK3 + GTK4)
+    install -Dm755 networkmanager/editor/libnm-vpn-plugin-draytek.so \
+        "$pkgdir$nm_plugindir/libnm-vpn-plugin-draytek.so"
+    install -Dm755 networkmanager/editor/libnm-vpn-plugin-draytek-editor.so \
+        "$pkgdir$nm_plugindir/libnm-vpn-plugin-draytek-editor.so"
+    install -Dm755 networkmanager/editor/libnm-gtk4-vpn-plugin-draytek-editor.so \
+        "$pkgdir$nm_plugindir/libnm-gtk4-vpn-plugin-draytek-editor.so"
+
+    # Auth dialog — path must match [GNOME] auth-dialog= in
+    # networkmanager/data/nm-draytek-service.name (/usr/libexec).
+    install -Dm755 networkmanager/auth-dialog/nm-draytek-auth-dialog \
+        "$pkgdir/usr/libexec/nm-draytek-auth-dialog"
+
+    # NM VPN service registration
+    install -Dm644 networkmanager/data/nm-draytek-service.name \
+        "$pkgdir/usr/lib/NetworkManager/VPN/nm-draytek-service.name"
+
+    # System D-Bus policy
+    install -Dm644 networkmanager/data/nm-draytek-service.conf \
+        "$pkgdir/usr/share/dbus-1/system.d/nm-draytek-service.conf"
+
+    # Dispatcher script (auto-launches tray on connect)
+    install -Dm755 networkmanager/data/90-draytek-vpn-tray \
+        "$pkgdir/etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray"
+
+    # Tray binary
+    install -Dm755 target/release/draytek-vpn-tray \
+        "$pkgdir/usr/bin/draytek-vpn-tray"
+
+    # License
+    install -Dm644 LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

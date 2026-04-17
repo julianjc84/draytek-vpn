@@ -11,7 +11,14 @@ CFLAGS   := -Wall -Wextra -Wno-unused-parameter -fPIC -shared -O2
 CFLAGS   += -fvisibility=hidden
 
 # Install paths
-NM_PLUGIN_DIR := $(shell $(PKG_CFG) --variable=plugindir libnm 2>/dev/null || echo /usr/lib/x86_64-linux-gnu/NetworkManager)
+# Debian ships `plugindir` in libnm.pc; Arch/Fedora do not. Fall back to
+# common locations based on what exists on disk.
+NM_PLUGIN_DIR := $(shell \
+	d=$$($(PKG_CFG) --variable=plugindir libnm 2>/dev/null); \
+	if [ -n "$$d" ]; then echo "$$d"; \
+	elif [ -d /usr/lib/x86_64-linux-gnu/NetworkManager ]; then echo /usr/lib/x86_64-linux-gnu/NetworkManager; \
+	else echo /usr/lib/NetworkManager; \
+	fi)
 
 # Plugin .so: glib + libnm (no GTK)
 COMMON_CFLAGS  := $(shell $(PKG_CFG) --cflags glib-2.0 libnm gmodule-2.0)

@@ -62,6 +62,14 @@ sudo apt install build-essential libgtk-4-dev libadwaita-1-dev libssl-dev pkg-co
 sudo apt install libnm-dev libgtk-3-dev gcc
 ```
 
+```bash
+# Arch / Manjaro / EndeavourOS
+sudo pacman -S --needed base-devel gtk4 libadwaita openssl pkgconf rust
+
+# Additional dependencies for the NetworkManager plugin
+sudo pacman -S --needed networkmanager gtk3 glib2
+```
+
 ### Rust toolchain
 
 Install via [rustup](https://rustup.rs/) if you don't have it:
@@ -89,6 +97,7 @@ Everything is managed through `./build.sh`:
 | `app` | GUI app + privileged helper |
 | `nm` | NetworkManager plugin (Rust service + C editor + C auth-dialog + tray dispatcher) |
 | `tray` | System tray indicator binary (installed automatically by `nm install`, use this to rebuild the binary only) |
+| `arch` | Arch Linux package via `makepkg` (wraps `packaging/arch/PKGBUILD`) |
 | `all` | All of the above |
 
 ### Actions
@@ -116,6 +125,9 @@ Everything is managed through `./build.sh`:
 # Build and install the system tray indicator
 ./build.sh tray install
 
+# Build + install as a native Arch package (pacman-tracked)
+./build.sh arch install
+
 # Build everything in release mode
 ./build.sh all release
 
@@ -140,12 +152,21 @@ Everything is managed through `./build.sh`:
 # Build .deb for the NetworkManager plugin (includes tray + dispatcher)
 ./build.sh nm deb
 # → target/deb-nm/draytek-vpn-nm_0.1.0_amd64.deb
+
+# Build Arch package (.pkg.tar.zst) for the NetworkManager plugin + tray
+./build.sh arch
+# → packaging/arch/draytek-vpn-networkmanager-0.1.0-1-x86_64.pkg.tar.zst
+
+# Or build + install in one shot via pacman
+./build.sh arch install
 ```
 
 Install a .deb with:
 ```bash
 sudo dpkg -i target/debian/draytek-vpn_0.1.0_amd64.deb
 ```
+
+See [`packaging/arch/README.md`](packaging/arch/README.md) for details on the Arch package layout and SNI tray hosts.
 
 ### Dependencies
 
@@ -268,11 +289,16 @@ draytek-vpn/
 │   │   └── 90-draytek-vpn-tray    #     NM dispatcher (auto-launches tray)
 │   └── build_deb.sh               #   .deb package builder
 │
-└── networkmanagertray/             # System tray indicator (Rust)
-    └── src/
-        ├── nm_monitor.rs           #   NM D-Bus monitor
-        ├── tray_impl.rs            #   Menu and status rendering
-        └── icons.rs                #   Colored status icons
+├── networkmanagertray/             # System tray indicator (Rust)
+│   └── src/
+│       ├── nm_monitor.rs           #   NM D-Bus monitor
+│       ├── tray_impl.rs            #   Menu and status rendering
+│       └── icons.rs                #   Colored status icons
+│
+└── packaging/
+    └── arch/                       # Arch PKGBUILD (makepkg -si)
+        ├── PKGBUILD
+        └── draytek-vpn-networkmanager.install
 ```
 
 ## Testing

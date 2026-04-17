@@ -123,13 +123,59 @@ info "Tagging $TAG"
 git tag "$TAG"
 git push origin "$TAG"
 
+info "Generating release notes with Arch install footer"
+REPO_SLUG=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+CLONE_URL=$(gh repo view --json url -q '.url')
+
+# Auto-generated notes from the GitHub API (same output as --generate-notes)
+GENERATED_NOTES=$(gh api -X POST "repos/$REPO_SLUG/releases/generate-notes" \
+    -f tag_name="$TAG" -q '.body')
+
+NOTES_FILE=$(mktemp)
+trap 'rm -f "$NOTES_FILE"' EXIT
+
+cat > "$NOTES_FILE" <<EOF
+## Install
+
+**Debian / Ubuntu** — download and install the \`.deb\` below:
+
+\`\`\`bash
+sudo dpkg -i draytek-vpn-standalone_${VERSION}_amd64.deb
+# or for the NetworkManager plugin:
+sudo dpkg -i draytek-vpn-networkmanager_${VERSION}_amd64.deb
+\`\`\`
+
+**Any distro** — the AppImage runs without installation:
+
+\`\`\`bash
+chmod +x draytek-vpn-standalone_${VERSION}_x86_64.AppImage
+./draytek-vpn-standalone_${VERSION}_x86_64.AppImage
+\`\`\`
+
+**Arch Linux / Manjaro / EndeavourOS** — build from the in-tree PKGBUILD
+(no prebuilt \`.pkg.tar.zst\` is published because Arch is rolling-release
+and binary packages drift out of ABI sync quickly):
+
+\`\`\`bash
+git clone --depth 1 --branch $TAG $CLONE_URL
+cd draytek-ssl-vpn-client-linux/packaging/arch
+makepkg -si
+\`\`\`
+
+See [\`packaging/arch/README.md\`]($CLONE_URL/blob/$TAG/packaging/arch/README.md) for details.
+
+---
+
+$GENERATED_NOTES
+EOF
+
 info "Creating release on GitHub"
 gh release create "$TAG" \
     "$APP_DEB" \
     "$APP_APPIMAGE" \
     "$NM_DEB" \
     --title "$TAG — DrayTek SSL VPN Client for Linux" \
-    --generate-notes
+    --notes-file "$NOTES_FILE"
 
 RELEASE_URL=$(gh release view "$TAG" --json url -q '.url')
 echo ""

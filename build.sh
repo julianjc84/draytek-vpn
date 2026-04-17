@@ -33,8 +33,24 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # ── Install paths ──────────────────────────────────────────────────
+# NM_PLUGIN_DIR holds the editor .so files. Debian uses a multiarch subdir;
+# Arch, Fedora, and most others use /usr/lib/NetworkManager directly. Query
+# libnm's pkgconfig first (Debian defines `plugindir` there) and fall back to
+# on-disk detection.
+detect_nm_plugin_dir() {
+    local dir
+    dir=$(pkg-config --variable=plugindir libnm 2>/dev/null || true)
+    if [ -n "$dir" ]; then
+        echo "$dir"
+    elif [ -d /usr/lib/x86_64-linux-gnu/NetworkManager ]; then
+        echo /usr/lib/x86_64-linux-gnu/NetworkManager
+    else
+        echo /usr/lib/NetworkManager
+    fi
+}
+
 POLKIT_DIR="/usr/share/polkit-1/actions"
-NM_PLUGIN_DIR="/usr/lib/x86_64-linux-gnu/NetworkManager"
+NM_PLUGIN_DIR="$(detect_nm_plugin_dir)"
 NM_VPN_DIR="/usr/lib/NetworkManager/VPN"
 NM_SERVICE_DIR="/usr/lib/NetworkManager"
 DBUS_CONF_DIR="/etc/dbus-1/system.d"
@@ -211,6 +227,33 @@ tray_uninstall() {
     info "Uninstalled."
 }
 
+# ── Arch package (makepkg) ────────────────────────────────────────
+
+arch_build() {
+    local install_flag="${1:-}"
+
+    if ! command -v makepkg &>/dev/null; then
+        error "makepkg not found — this target only works on Arch-based distros."
+        exit 1
+    fi
+    if [ "$EUID" -eq 0 ]; then
+        error "Do not run makepkg as root. Re-run ./build.sh arch as a regular user."
+        exit 1
+    fi
+
+    local pkgdir="packaging/arch"
+    header "Arch Package (makepkg)"
+    if [ "$install_flag" = "install" ]; then
+        info "Building + installing via pacman (makepkg -si)"
+        ( cd "$pkgdir" && makepkg -si )
+    else
+        info "Building package (makepkg); use 'arch install' to install it"
+        ( cd "$pkgdir" && makepkg -f )
+        info "Artifact:"
+        ls -lh "$pkgdir"/*.pkg.tar.zst 2>/dev/null || true
+    fi
+}
+
 # ── Clean ──────────────────────────────────────────────────────────
 
 do_clean() {
@@ -231,6 +274,7 @@ Targets:
   app              Standalone GTK4 app
   nm               NetworkManager plugin
   tray             System tray indicator
+  arch             Arch package (makepkg wrapper for packaging/arch)
   all              All of the above
 
 Actions:
@@ -252,6 +296,7 @@ Examples:
   ./build.sh nm install         Build + install NM plugin
   ./build.sh nm deb             Build NM plugin .deb package
   ./build.sh tray install       Build + install tray indicator
+  ./build.sh arch install       Build + install Arch package via pacman
   ./build.sh all release        Build everything (release)
   ./build.sh clean              Clean C artifacts
 EOF
@@ -292,6 +337,13 @@ case "$target" in
             install)    tray_install ;;
             uninstall)  tray_uninstall ;;
             *)          usage ;;
+        esac
+        ;;
+    arch)
+        case "$action" in
+            debug|""|release)  arch_build "" ;;
+            install)           arch_build install ;;
+            *)                 usage ;;
         esac
         ;;
     all)
