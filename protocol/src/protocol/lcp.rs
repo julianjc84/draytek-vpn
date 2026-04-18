@@ -11,9 +11,10 @@ use crate::protocol::ppp_control::PppControlOption;
 pub fn create_lcp_fsm(mru: u16) -> PppFsm {
     let mru = if mru == 0 { DEFAULT_MRU } else { mru };
     // Options we propose for our side
-    let desired_local = vec![
-        PppControlOption::new(PPP_LCP_CONFIG_MRU, vec![(mru >> 8) as u8, mru as u8]),
-    ];
+    let desired_local = vec![PppControlOption::new(
+        PPP_LCP_CONFIG_MRU,
+        vec![(mru >> 8) as u8, mru as u8],
+    )];
 
     // Options we accept from the router
     let acceptable_remote = vec![

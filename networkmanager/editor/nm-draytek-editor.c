@@ -51,7 +51,6 @@ typedef struct {
     GtkWidget *routes_entry;
     GtkWidget *default_gw_switch;
     GtkWidget *keepalive_switch;
-    GtkWidget *auto_reconnect_switch;
     GtkWidget *self_signed_switch;
     GtkWidget *mru_spin;
 
@@ -320,17 +319,6 @@ init_editor_widget(DraytekEditor *self, NMConnection *connection)
                         box);
     }
 
-    /* Auto-Reconnect */
-    self->auto_reconnect_switch = gtk_switch_new();
-    gtk_switch_set_active(GTK_SWITCH(self->auto_reconnect_switch), FALSE);
-    {
-        GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-        COMPAT_BOX_APPEND(box, self->auto_reconnect_switch);
-        grid_attach_row(grid, row++, "Auto-Reconnect",
-                        "Automatically reconnect if the tunnel drops unexpectedly",
-                        box);
-    }
-
     /* Accept Self-Signed Certificates */
     self->self_signed_switch = gtk_switch_new();
     gtk_switch_set_active(GTK_SWITCH(self->self_signed_switch), TRUE);
@@ -391,10 +379,6 @@ init_editor_widget(DraytekEditor *self, NMConnection *connection)
         if (val)
             gtk_switch_set_active(GTK_SWITCH(self->keepalive_switch), str_to_bool(val, FALSE));
 
-        val = nm_setting_vpn_get_data_item(s_vpn, NM_DRAYTEK_KEY_AUTO_RECONNECT);
-        if (val)
-            gtk_switch_set_active(GTK_SWITCH(self->auto_reconnect_switch), str_to_bool(val, FALSE));
-
         val = nm_setting_vpn_get_data_item(s_vpn, NM_DRAYTEK_KEY_VERIFY_CERT);
         if (val) {
             gboolean accept_self_signed = !str_to_bool(val, FALSE);
@@ -426,7 +410,6 @@ init_editor_widget(DraytekEditor *self, NMConnection *connection)
 
     g_signal_connect(self->route_remote_switch,   "notify::active", G_CALLBACK(switch_changed_cb), self);
     g_signal_connect(self->keepalive_switch,      "notify::active", G_CALLBACK(switch_changed_cb), self);
-    g_signal_connect(self->auto_reconnect_switch, "notify::active", G_CALLBACK(switch_changed_cb), self);
     g_signal_connect(self->self_signed_switch,    "notify::active", G_CALLBACK(switch_changed_cb), self);
 
     g_signal_connect(self->default_gw_switch, "notify::active", G_CALLBACK(default_gw_toggled), self);
@@ -508,9 +491,6 @@ update_connection(NMVpnEditor *editor, NMConnection *connection, GError **error)
 
     nm_setting_vpn_add_data_item(s_vpn, NM_DRAYTEK_KEY_KEEPALIVE,
         gtk_switch_get_active(GTK_SWITCH(self->keepalive_switch)) ? "yes" : "no");
-
-    nm_setting_vpn_add_data_item(s_vpn, NM_DRAYTEK_KEY_AUTO_RECONNECT,
-        gtk_switch_get_active(GTK_SWITCH(self->auto_reconnect_switch)) ? "yes" : "no");
 
     nm_setting_vpn_add_data_item(s_vpn, NM_DRAYTEK_KEY_VERIFY_CERT,
         gtk_switch_get_active(GTK_SWITCH(self->self_signed_switch)) ? "no" : "yes");

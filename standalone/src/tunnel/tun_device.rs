@@ -18,28 +18,25 @@ const TUNSETIFF: libc::c_ulong = 0x400454ca;
 pub fn open_tun(name: &str) -> Result<tun_rs::AsyncDevice> {
     info!("Opening TUN device {name}");
 
-    let fd = unsafe {
-        libc::open(
-            c"/dev/net/tun".as_ptr(),
-            libc::O_RDWR | libc::O_CLOEXEC,
-        )
-    };
+    let fd = unsafe { libc::open(c"/dev/net/tun".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
     if fd < 0 {
-        return Err(std::io::Error::last_os_error())
-            .context("Failed to open /dev/net/tun");
+        return Err(std::io::Error::last_os_error()).context("Failed to open /dev/net/tun");
     }
 
     // Set up ifreq with device name and IFF_TUN | IFF_NO_PI
-    let c_name = CString::new(name)
-        .context("Invalid TUN device name")?;
+    let c_name = CString::new(name).context("Invalid TUN device name")?;
     if c_name.as_bytes_with_nul().len() > libc::IFNAMSIZ {
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
         anyhow::bail!("TUN device name too long: {name}");
     }
 
     let result = attach_tun(fd, &c_name);
     if let Err(e) = result {
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
         return Err(e);
     }
 
@@ -63,8 +60,7 @@ fn attach_tun(fd: RawFd, name: &CString) -> Result<()> {
         );
 
         // IFF_TUN | IFF_NO_PI
-        req.ifr_ifru.ifru_flags =
-            (libc::IFF_TUN | libc::IFF_NO_PI) as libc::c_short;
+        req.ifr_ifru.ifru_flags = (libc::IFF_TUN | libc::IFF_NO_PI) as libc::c_short;
 
         let ret = libc::ioctl(fd, TUNSETIFF as _, &mut req as *mut _);
         if ret < 0 {

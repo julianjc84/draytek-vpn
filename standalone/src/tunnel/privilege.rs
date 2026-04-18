@@ -84,10 +84,7 @@ fn needs_pkexec() -> bool {
             }
         };
 
-        match std::process::Command::new(&helper)
-            .arg("check")
-            .output()
-        {
+        match std::process::Command::new(&helper).arg("check").output() {
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 for line in stderr.lines() {
@@ -120,7 +117,8 @@ async fn run_helper(args: Vec<String>) -> Result<std::process::Output> {
             .await
             .context("Failed to execute pkexec — is Polkit installed?")
     } else {
-        let (program, cmd_args) = args.split_first()
+        let (program, cmd_args) = args
+            .split_first()
             .ok_or_else(|| anyhow::anyhow!("Empty args for run_helper"))?;
         tokio::process::Command::new(program)
             .args(cmd_args)

@@ -94,15 +94,9 @@ impl ConnectionView {
         let info_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
         info_box.set_visible(false);
 
-        let ip_label = info_label(
-            "Your IP address on the VPN network, assigned by the router",
-        );
-        let gateway_label = info_label(
-            "The VPN gateway — the router's IP on the tunnel network",
-        );
-        let dns_label = info_label(
-            "DNS server provided by the VPN for resolving domain names",
-        );
+        let ip_label = info_label("Your IP address on the VPN network, assigned by the router");
+        let gateway_label = info_label("The VPN gateway — the router's IP on the tunnel network");
+        let dns_label = info_label("DNS server provided by the VPN for resolving domain names");
         let mtu_label = info_label(
             "Maximum Transmission Unit — largest packet size allowed.\n\
              'ours' is what we can receive, 'router' is what the router accepts.\n\
@@ -122,15 +116,10 @@ impl ConnectionView {
         let stats_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
         stats_box.set_visible(false);
 
-        let tx_label = stat_label(
-            "Data sent through the VPN tunnel to the remote network",
-        );
-        let rx_label = stat_label(
-            "Data received through the VPN tunnel from the remote network",
-        );
-        let oversized_label = stat_label(
-            "Packets that exceeded the MTU limit — may cause fragmentation or drops",
-        );
+        let tx_label = stat_label("Data sent through the VPN tunnel to the remote network");
+        let rx_label = stat_label("Data received through the VPN tunnel from the remote network");
+        let oversized_label =
+            stat_label("Packets that exceeded the MTU limit — may cause fragmentation or drops");
         let max_pkt_label = stat_label(
             "Largest single packet seen in each direction this session.\n\
              Compare with MTU to see how close traffic gets to the limit.",
@@ -226,7 +215,8 @@ impl ConnectionView {
             }
             TunnelStatus::NegotiatingIpcp => {
                 self.status_label.set_label("Negotiating...");
-                self.details_label.set_label("IPCP negotiation (IP assignment)");
+                self.details_label
+                    .set_label("IPCP negotiation (IP assignment)");
             }
             TunnelStatus::Connected {
                 local_ip,
@@ -246,7 +236,8 @@ impl ConnectionView {
                 self.details_label.set_visible(false);
 
                 self.ip_label.set_label(&format!("IP: {local_ip}"));
-                self.gateway_label.set_label(&format!("Gateway: {remote_ip}"));
+                self.gateway_label
+                    .set_label(&format!("Gateway: {remote_ip}"));
                 let dns_str = dns
                     .map(|d| format!("DNS: {d}"))
                     .unwrap_or_else(|| "DNS: none".to_string());
@@ -279,8 +270,7 @@ impl ConnectionView {
                 self.max_pkt_label.set_label("");
                 self.stats_box.set_visible(true);
 
-                self.status_icon
-                    .set_icon_name(Some("network-vpn-symbolic"));
+                self.status_icon.set_icon_name(Some("network-vpn-symbolic"));
                 self.status_icon.remove_css_class("dim-label");
                 self.status_icon.add_css_class("success");
                 self.connect_btn.set_visible(false);

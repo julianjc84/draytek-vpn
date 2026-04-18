@@ -90,6 +90,7 @@ impl LogView {
         buffer.set_text(&text);
 
         // Auto-scroll to bottom using the end mark (reliable after set_text)
-        self.text_view.scroll_to_mark(&self.end_mark, 0.0, true, 0.0, 1.0);
+        self.text_view
+            .scroll_to_mark(&self.end_mark, 0.0, true, 0.0, 1.0);
     }
 }

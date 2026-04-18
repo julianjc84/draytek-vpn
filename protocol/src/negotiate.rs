@@ -14,7 +14,7 @@ use crate::protocol::ipcp;
 use crate::protocol::lcp;
 use crate::protocol::ppp::PppFrame;
 use crate::protocol::ppp_control::{
-    ChapChallenge, PppControlFrame, build_chap_response, build_pap_payload,
+    build_chap_response, build_pap_payload, ChapChallenge, PppControlFrame,
 };
 use crate::protocol::sstp::SstpPacket;
 use crate::types::{ConnectionProfile, NegotiationResult};
@@ -120,7 +120,10 @@ pub async fn negotiate(
                 continue; // Ignore keepalive during negotiation
             }
             if !sstp.is_data() {
-                bail!("Unexpected SSTP command 0x{:02X} during negotiation", sstp.command);
+                bail!(
+                    "Unexpected SSTP command 0x{:02X} during negotiation",
+                    sstp.command
+                );
             }
 
             // Parse PPP frame
@@ -192,10 +195,8 @@ pub async fn negotiate(
                     )
                     .context("CHAP authentication computation failed")?;
 
-                    let chap_payload =
-                        build_chap_response(&response_value, &profile.username);
-                    let mut resp_frame =
-                        PppControlFrame::new(PPP_CHAP_RESPONSE, ctrl.identifier);
+                    let chap_payload = build_chap_response(&response_value, &profile.username);
+                    let mut resp_frame = PppControlFrame::new(PPP_CHAP_RESPONSE, ctrl.identifier);
                     resp_frame.data = chap_payload;
                     let ppp_frame = PppFrame::new(PPP_CHAP, resp_frame.to_bytes());
                     send_ppp_frame(&ppp_frame, tls_stream).await?;
@@ -241,14 +242,18 @@ pub async fn negotiate(
                     .context("Failed to parse CCP control frame")?;
                 debug!("CCP: code={}, rejecting", ctrl.code);
                 if ctrl.code == PPP_CONFIG_REQ {
-                    let options = ctrl.parse_options()
+                    let options = ctrl
+                        .parse_options()
                         .context("Failed to parse CCP options")?;
                     let reject = PppControlFrame::config_reject(ctrl.identifier, &options);
                     let ppp_frame = PppFrame::new(PPP_CCP, reject.to_bytes());
                     send_ppp_frame(&ppp_frame, tls_stream).await?;
                 }
             } else {
-                debug!("Ignoring PPP protocol 0x{:04X} during negotiation", ppp.protocol);
+                debug!(
+                    "Ignoring PPP protocol 0x{:04X} during negotiation",
+                    ppp.protocol
+                );
             }
 
             // Check if both FSMs are opened
@@ -263,10 +268,9 @@ pub async fn negotiate(
     }
 
     // Extract negotiated parameters
-    let local_ip = ipcp::get_local_ip(&ipcp_fsm)
-        .context("IPCP completed but no local IP assigned")?;
-    let remote_ip = ipcp::get_remote_ip(&ipcp_fsm)
-        .unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
+    let local_ip =
+        ipcp::get_local_ip(&ipcp_fsm).context("IPCP completed but no local IP assigned")?;
+    let remote_ip = ipcp::get_remote_ip(&ipcp_fsm).unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
     let dns = ipcp::get_local_dns(&ipcp_fsm);
     let local_mru = lcp::get_local_mru(&lcp_fsm).unwrap_or(DEFAULT_MRU);
     let remote_mru = lcp::get_remote_mru(&lcp_fsm).unwrap_or(DEFAULT_MRU);

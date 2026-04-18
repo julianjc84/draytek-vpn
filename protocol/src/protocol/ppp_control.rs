@@ -198,7 +198,6 @@ impl PppControlFrame {
     pub fn parse_options(&self) -> Result<Vec<PppControlOption>> {
         parse_options(&self.data)
     }
-
 }
 
 /// PAP request payload: username_length + username + password_length + password.

@@ -118,12 +118,19 @@ mod tests {
     #[test]
     fn test_data_packet_roundtrip() {
         let payload = vec![0xFF, 0x03, 0x00, 0x21, 0x45, 0x00];
-        let pkt = SstpPacket { command: SSTP_CMD_DATA, version: 0, data: payload.clone() };
+        let pkt = SstpPacket {
+            command: SSTP_CMD_DATA,
+            version: 0,
+            data: payload.clone(),
+        };
         let bytes = pkt.to_bytes();
 
         assert_eq!(bytes[0], SSTP_CMD_DATA);
         assert_eq!(bytes[1], 0x00);
-        assert_eq!((bytes[2] as u16) << 8 | bytes[3] as u16, payload.len() as u16);
+        assert_eq!(
+            (bytes[2] as u16) << 8 | bytes[3] as u16,
+            payload.len() as u16
+        );
         assert_eq!(&bytes[4..], &payload);
 
         let (parsed, consumed) = SstpPacket::parse(&bytes).unwrap().unwrap();
@@ -163,16 +170,18 @@ mod tests {
         assert!(SstpPacket::parse(&[0x00, 0x00, 0x00]).unwrap().is_none());
 
         // Header says 4 bytes of data but only 2 present
-        assert!(
-            SstpPacket::parse(&[0x00, 0x00, 0x00, 0x04, 0xAA, 0xBB])
-                .unwrap()
-                .is_none()
-        );
+        assert!(SstpPacket::parse(&[0x00, 0x00, 0x00, 0x04, 0xAA, 0xBB])
+            .unwrap()
+            .is_none());
     }
 
     #[test]
     fn test_parse_multiple_packets_in_buffer() {
-        let pkt1 = SstpPacket { command: SSTP_CMD_DATA, version: 0, data: vec![0x01, 0x02] };
+        let pkt1 = SstpPacket {
+            command: SSTP_CMD_DATA,
+            version: 0,
+            data: vec![0x01, 0x02],
+        };
         let pkt2 = SstpPacket::close();
         let mut combined = pkt1.to_bytes();
         combined.extend_from_slice(&pkt2.to_bytes());
@@ -180,15 +189,19 @@ mod tests {
         let (parsed1, consumed1) = SstpPacket::parse(&combined).unwrap().unwrap();
         assert_eq!(parsed1, pkt1);
 
-        let (parsed2, consumed2) =
-            SstpPacket::parse(&combined[consumed1..]).unwrap().unwrap();
+        let (parsed2, consumed2) = SstpPacket::parse(&combined[consumed1..]).unwrap().unwrap();
         assert_eq!(parsed2, pkt2);
         assert_eq!(consumed1 + consumed2, combined.len());
     }
 
     #[test]
     fn test_packet_type_checks() {
-        assert!(SstpPacket { command: SSTP_CMD_DATA, version: 0, data: vec![] }.is_data());
+        assert!(SstpPacket {
+            command: SSTP_CMD_DATA,
+            version: 0,
+            data: vec![]
+        }
+        .is_data());
         assert!(SstpPacket::close().is_close());
         assert!(SstpPacket::keepalive_request(0).is_request());
 

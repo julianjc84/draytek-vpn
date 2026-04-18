@@ -34,7 +34,15 @@ pub fn create_tun(
 
     // Configure IP address
     let status = std::process::Command::new("ip")
-        .args(["addr", "add", &format!("{local_ip}"), "peer", &format!("{peer_ip}"), "dev", name])
+        .args([
+            "addr",
+            "add",
+            &format!("{local_ip}"),
+            "peer",
+            &format!("{peer_ip}"),
+            "dev",
+            name,
+        ])
         .status()
         .context("Failed to configure IP address")?;
     if !status.success() {
@@ -53,21 +61,17 @@ pub fn create_tun(
     }
 
     // Open the TUN device
-    let fd = unsafe {
-        libc::open(
-            c"/dev/net/tun".as_ptr(),
-            libc::O_RDWR | libc::O_CLOEXEC,
-        )
-    };
+    let fd = unsafe { libc::open(c"/dev/net/tun".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
     if fd < 0 {
         delete_tun(name);
-        return Err(std::io::Error::last_os_error())
-            .context("Failed to open /dev/net/tun");
+        return Err(std::io::Error::last_os_error()).context("Failed to open /dev/net/tun");
     }
 
     let c_name = CString::new(name).context("Invalid TUN device name")?;
     if let Err(e) = attach_tun(fd, &c_name) {
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
         delete_tun(name);
         return Err(e);
     }
@@ -103,13 +107,11 @@ fn attach_tun(fd: RawFd, name: &CString) -> Result<()> {
             name.as_bytes_with_nul().len(),
         );
 
-        req.ifr_ifru.ifru_flags =
-            (libc::IFF_TUN | libc::IFF_NO_PI) as libc::c_short;
+        req.ifr_ifru.ifru_flags = (libc::IFF_TUN | libc::IFF_NO_PI) as libc::c_short;
 
         let ret = libc::ioctl(fd, TUNSETIFF as _, &mut req as *mut _);
         if ret < 0 {
-            return Err(std::io::Error::last_os_error())
-                .context("TUNSETIFF ioctl failed");
+            return Err(std::io::Error::last_os_error()).context("TUNSETIFF ioctl failed");
         }
     }
     Ok(())

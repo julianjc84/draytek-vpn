@@ -10,20 +10,15 @@ use zbus::{connection, interface, Connection};
 use crate::tunnel::TunnelHandle;
 
 /// NM VPN plugin states (from NM source).
-#[allow(dead_code)]
 mod nm_vpn_state {
-    pub const UNKNOWN: u32 = 0;
     pub const INIT: u32 = 1;
-    pub const SHUTDOWN: u32 = 2;
     pub const STARTING: u32 = 3;
-    pub const STARTED: u32 = 4;
     pub const STOPPING: u32 = 5;
     pub const STOPPED: u32 = 6;
 }
 
 /// NM VPN failure reasons.
-#[allow(dead_code)]
-mod nm_vpn_failure {
+pub mod nm_vpn_failure {
     pub const LOGIN_FAILED: u32 = 0;
     pub const CONNECT_FAILED: u32 = 1;
 }
@@ -70,10 +65,7 @@ impl VpnPlugin {
     }
 
     /// Check if secrets are needed. Returns the setting name that needs secrets, or "".
-    async fn need_secrets(
-        &self,
-        settings: Settings,
-    ) -> zbus::fdo::Result<String> {
+    async fn need_secrets(&self, settings: Settings) -> zbus::fdo::Result<String> {
         let has_password = settings
             .get("vpn")
             .and_then(|v| v.get("secrets"))
@@ -92,10 +84,7 @@ impl VpnPlugin {
     }
 
     /// Accept updated secrets.
-    async fn new_secrets(
-        &mut self,
-        _settings: Settings,
-    ) -> zbus::fdo::Result<()> {
+    async fn new_secrets(&mut self, _settings: Settings) -> zbus::fdo::Result<()> {
         info!("NewSecrets called");
         Ok(())
     }
@@ -109,8 +98,12 @@ impl VpnPlugin {
         if let Some(handle) = self.tunnel.take() {
             handle.disconnect().await;
         }
-        Self::state_changed(&emitter, nm_vpn_state::STOPPING).await.ok();
-        Self::state_changed(&emitter, nm_vpn_state::STOPPED).await.ok();
+        Self::state_changed(&emitter, nm_vpn_state::STOPPING)
+            .await
+            .ok();
+        Self::state_changed(&emitter, nm_vpn_state::STOPPED)
+            .await
+            .ok();
         self.vpn_state = nm_vpn_state::STOPPED;
         Ok(())
     }
@@ -132,10 +125,7 @@ impl VpnPlugin {
     }
 
     /// Set failure (no-op for us).
-    async fn set_failure(
-        &self,
-        _reason: String,
-    ) -> zbus::fdo::Result<()> {
+    async fn set_failure(&self, _reason: String) -> zbus::fdo::Result<()> {
         Ok(())
     }
 
@@ -176,13 +166,17 @@ impl VpnPlugin {
             Ok(p) => p,
             Err(e) => {
                 error!("Failed to parse settings: {e:#}");
-                Self::failure(emitter, nm_vpn_failure::CONNECT_FAILED).await.ok();
+                Self::failure(emitter, nm_vpn_failure::CONNECT_FAILED)
+                    .await
+                    .ok();
                 return Err(zbus::fdo::Error::Failed(format!("Invalid settings: {e:#}")));
             }
         };
 
         // Signal starting
-        Self::state_changed(emitter, nm_vpn_state::STARTING).await.ok();
+        Self::state_changed(emitter, nm_vpn_state::STARTING)
+            .await
+            .ok();
         self.vpn_state = nm_vpn_state::STARTING;
 
         // Spawn tunnel task

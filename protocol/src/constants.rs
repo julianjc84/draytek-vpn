@@ -1,4 +1,4 @@
-/// Protocol constants ported from DrayTek SmartVPN Constants.java
+//! Protocol constants ported from DrayTek SmartVPN Constants.java.
 
 // PPP Protocol numbers (as u16 for wire format)
 pub const PPP_IPV4_DATA: u16 = 0x0021; // 33

@@ -95,9 +95,15 @@ mod tests {
         match &actions[0] {
             crate::protocol::fsm::FsmAction::SendFrame(f) => {
                 let opts = f.parse_options().unwrap();
-                let ip_opt = opts.iter().find(|o| o.option_type == PPP_IPCP_CONFIG_IP_ADDR).unwrap();
+                let ip_opt = opts
+                    .iter()
+                    .find(|o| o.option_type == PPP_IPCP_CONFIG_IP_ADDR)
+                    .unwrap();
                 assert_eq!(ip_opt.data, vec![10, 0, 0, 100]);
-                let dns_opt = opts.iter().find(|o| o.option_type == PPP_IPCP_CONFIG_DNS_ADDR).unwrap();
+                let dns_opt = opts
+                    .iter()
+                    .find(|o| o.option_type == PPP_IPCP_CONFIG_DNS_ADDR)
+                    .unwrap();
                 assert_eq!(dns_opt.data, vec![8, 8, 8, 8]);
             }
             _ => panic!(),
@@ -107,7 +113,10 @@ mod tests {
     #[test]
     fn test_parse_ip() {
         assert_eq!(parse_ip(&[10, 0, 0, 1]), Some(Ipv4Addr::new(10, 0, 0, 1)));
-        assert_eq!(parse_ip(&[192, 168, 1, 1]), Some(Ipv4Addr::new(192, 168, 1, 1)));
+        assert_eq!(
+            parse_ip(&[192, 168, 1, 1]),
+            Some(Ipv4Addr::new(192, 168, 1, 1))
+        );
         assert_eq!(parse_ip(&[0, 0, 0, 0]), Some(Ipv4Addr::new(0, 0, 0, 0)));
         assert_eq!(parse_ip(&[1, 2]), None);
     }

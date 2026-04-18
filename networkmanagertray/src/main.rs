@@ -27,10 +27,8 @@ async fn main() -> Result<()> {
     info!("DrayTek VPN tray indicator starting");
 
     let (state_tx, state_rx) = watch::channel(VpnState::Disconnected);
-    let (disconnect_tx, mut disconnect_rx) =
-        mpsc::unbounded_channel::<OwnedObjectPath>();
-    let (connect_tx, mut connect_rx) =
-        mpsc::unbounded_channel::<OwnedObjectPath>();
+    let (disconnect_tx, mut disconnect_rx) = mpsc::unbounded_channel::<OwnedObjectPath>();
+    let (connect_tx, mut connect_rx) = mpsc::unbounded_channel::<OwnedObjectPath>();
 
     // Fetch saved DrayTek VPN connections for the menu
     let saved_vpns = nm_monitor::list_saved_vpns().await;
@@ -108,7 +106,7 @@ async fn main() -> Result<()> {
                                 .unwrap_or(0)
                         });
                     }
-                    VpnState::Disconnected | VpnState::Disconnecting => {
+                    VpnState::Disconnected => {
                         connected_at = None;
                     }
                     _ => {}

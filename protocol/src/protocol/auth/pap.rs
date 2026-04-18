@@ -1,12 +1,12 @@
-/// PAP (Password Authentication Protocol) implementation.
-///
-/// PAP Request payload:
-/// ```text
-/// byte: username_length
-/// bytes: username
-/// byte: password_length
-/// bytes: password
-/// ```
+//! PAP (Password Authentication Protocol) implementation.
+//!
+//! PAP Request payload:
+//! ```text
+//! byte: username_length
+//! bytes: username
+//! byte: password_length
+//! bytes: password
+//! ```
 
 /// Build a PAP request data payload.
 pub fn build_pap_request_data(username: &str, password: &str) -> Vec<u8> {

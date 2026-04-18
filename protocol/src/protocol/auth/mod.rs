@@ -1,5 +1,5 @@
-pub mod pap;
 pub mod mschap;
+pub mod pap;
 
 use crate::constants::AuthMethod;
 use anyhow::Result;

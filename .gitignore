@@ -6,7 +6,7 @@ standalone/appimage-tools/
 
 # Claude Code
 .claude
-CLAUDE.md
+# CLAUDE.md is checked in as project shared context
 
 # Editor / IDE
 *.swp

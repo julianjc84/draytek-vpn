@@ -1,6 +1,6 @@
 mod plugin;
-mod tunnel;
 mod tun_device;
+mod tunnel;
 
 use tracing::info;
 

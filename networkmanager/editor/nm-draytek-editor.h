@@ -25,7 +25,6 @@
 #define NM_DRAYTEK_KEY_NEVER_DEFAULT        "never-default"
 #define NM_DRAYTEK_KEY_KEEPALIVE            "keepalive"
 #define NM_DRAYTEK_KEY_ROUTES               "routes"
-#define NM_DRAYTEK_KEY_AUTO_RECONNECT       "auto-reconnect"
 
 /* vpn.secrets key names */
 #define NM_DRAYTEK_KEY_PASSWORD             "password"

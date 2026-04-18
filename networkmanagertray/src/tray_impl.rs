@@ -42,7 +42,7 @@ impl ksni::Tray for VpnTray {
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         let icon = match &self.vpn_state {
             VpnState::Disconnected => &*crate::icons::DISCONNECTED,
-            VpnState::Connecting { .. } | VpnState::Disconnecting => &*crate::icons::CONNECTING,
+            VpnState::Connecting { .. } => &*crate::icons::CONNECTING,
             VpnState::Connected { .. } => &*crate::icons::CONNECTED,
         };
         vec![icon.clone()]
@@ -58,7 +58,14 @@ impl ksni::Tray for VpnTray {
         let description = match &self.vpn_state {
             VpnState::Disconnected => "Disconnected".to_string(),
             VpnState::Connecting { name } => format!("Connecting: {name}"),
-            VpnState::Connected { name, ip, gateway, routes, keepalive, .. } => {
+            VpnState::Connected {
+                name,
+                ip,
+                gateway,
+                routes,
+                keepalive,
+                ..
+            } => {
                 let mut lines = vec![
                     format!("Connected: {name}"),
                     format!("Server: {gateway}"),
@@ -92,7 +99,6 @@ impl ksni::Tray for VpnTray {
                 }
                 lines.join("\n")
             }
-            VpnState::Disconnecting => "Disconnecting...".to_string(),
         };
         ToolTip {
             icon_name: String::new(),
@@ -144,7 +150,8 @@ impl ksni::Tray for VpnTray {
                         disposition: ksni::menu::Disposition::Normal,
                         activate: Box::new(|_: &mut VpnTray| {
                             let _ = Command::new("nm-connection-editor")
-                                .stdout(Stdio::null()).stderr(Stdio::null())
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
                                 .spawn();
                         }),
                     }
@@ -160,12 +167,18 @@ impl ksni::Tray for VpnTray {
                         shortcut: Vec::new(),
                         disposition: ksni::menu::Disposition::Normal,
                         activate: Box::new(|_: &mut VpnTray| {
-                            let _ = Command::new("cinnamon-settings").arg("network")
-                                .stdout(Stdio::null()).stderr(Stdio::null())
+                            let _ = Command::new("cinnamon-settings")
+                                .arg("network")
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
                                 .spawn()
-                                .or_else(|_| Command::new("gnome-control-center").arg("network")
-                                    .stdout(Stdio::null()).stderr(Stdio::null())
-                                    .spawn());
+                                .or_else(|_| {
+                                    Command::new("gnome-control-center")
+                                        .arg("network")
+                                        .stdout(Stdio::null())
+                                        .stderr(Stdio::null())
+                                        .spawn()
+                                });
                         }),
                     }
                     .into(),
@@ -176,10 +189,15 @@ impl ksni::Tray for VpnTray {
             VpnState::Connecting { name } => {
                 vec![label(&format!("Connecting: {name}..."))]
             }
-            VpnState::Disconnecting => {
-                vec![label("Disconnecting...")]
-            }
-            VpnState::Connected { name, ip, gateway, routes, path, keepalive, .. } => {
+            VpnState::Connected {
+                name,
+                ip,
+                gateway,
+                routes,
+                path,
+                keepalive,
+                ..
+            } => {
                 let mut items: Vec<MenuItem<Self>> = Vec::new();
 
                 items.push(label(&format!("Connected: {name}")));

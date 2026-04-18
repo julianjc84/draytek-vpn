@@ -1,6 +1,7 @@
-/// Profile TOML persistence (~/.config/draytek-vpn/).
-use draytek_vpn_protocol::types::ConnectionProfile;
+//! Profile TOML persistence (~/.config/draytek-vpn/).
+
 use anyhow::{Context, Result};
+use draytek_vpn_protocol::types::ConnectionProfile;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -30,8 +31,6 @@ pub struct ProfileConfig {
     /// Enable keepalive pings automatically on connect.
     #[serde(default)]
     pub keepalive: bool,
-    #[serde(default)]
-    pub auto_reconnect: bool,
     /// Maximum Receive Unit (MRU) proposed during LCP. 0 = default (1280).
     #[serde(default)]
     pub mru: u16,
@@ -48,8 +47,7 @@ fn default_true() -> bool {
 impl From<ProfileConfig> for ConnectionProfile {
     fn from(cfg: ProfileConfig) -> Self {
         // Retrieve password from keyring; fall back to any legacy plaintext value
-        let password = retrieve_password(&cfg.name)
-            .unwrap_or(cfg.password);
+        let password = retrieve_password(&cfg.name).unwrap_or(cfg.password);
         ConnectionProfile {
             name: cfg.name,
             server: cfg.server,
@@ -61,7 +59,6 @@ impl From<ProfileConfig> for ConnectionProfile {
             route_remote_network: cfg.route_remote_network,
             routes: cfg.routes,
             keepalive: cfg.keepalive,
-            auto_reconnect: cfg.auto_reconnect,
             mru: cfg.mru,
         }
     }
@@ -80,7 +77,6 @@ impl From<&ConnectionProfile> for ProfileConfig {
             route_remote_network: profile.route_remote_network,
             routes: profile.routes.clone(),
             keepalive: profile.keepalive,
-            auto_reconnect: profile.auto_reconnect,
             mru: profile.mru,
         }
     }
@@ -169,10 +165,7 @@ pub fn migrate_passwords(config: &mut AppConfig) {
         if !profile.password.is_empty() {
             match store_password(&profile.name, &profile.password) {
                 Ok(()) => {
-                    info!(
-                        "Migrated password for '{}' to system keyring",
-                        profile.name
-                    );
+                    info!("Migrated password for '{}' to system keyring", profile.name);
                     profile.password.clear();
                     migrated = true;
                 }
@@ -211,7 +204,6 @@ mod tests {
                 route_remote_network: true,
                 routes: vec!["10.0.0.0/8".to_string(), "172.16.0.0/12".to_string()],
                 keepalive: false,
-                auto_reconnect: true,
                 mru: 0,
             }],
             last_selected: Some(0),
@@ -269,7 +261,6 @@ mod tests {
             route_remote_network: true,
             routes: vec![],
             keepalive: false,
-            auto_reconnect: false,
             mru: 1400,
         };
         let profile: ConnectionProfile = cfg.into();

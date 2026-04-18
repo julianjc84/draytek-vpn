@@ -4,13 +4,16 @@ use std::sync::LazyLock;
 const SIZE: i32 = 22;
 
 /// Connected — green shield with checkmark
-pub static CONNECTED: LazyLock<ksni::Icon> = LazyLock::new(|| shield_icon(0x4C, 0xAF, 0x50, Glyph::Check));
+pub static CONNECTED: LazyLock<ksni::Icon> =
+    LazyLock::new(|| shield_icon(0x4C, 0xAF, 0x50, Glyph::Check));
 
 /// Disconnected — red shield with X
-pub static DISCONNECTED: LazyLock<ksni::Icon> = LazyLock::new(|| shield_icon(0xF4, 0x43, 0x36, Glyph::Cross));
+pub static DISCONNECTED: LazyLock<ksni::Icon> =
+    LazyLock::new(|| shield_icon(0xF4, 0x43, 0x36, Glyph::Cross));
 
 /// Connecting/disconnecting — amber shield with dots
-pub static CONNECTING: LazyLock<ksni::Icon> = LazyLock::new(|| shield_icon(0xFF, 0x98, 0x00, Glyph::Dots));
+pub static CONNECTING: LazyLock<ksni::Icon> =
+    LazyLock::new(|| shield_icon(0xFF, 0x98, 0x00, Glyph::Dots));
 
 enum Glyph {
     Check,
@@ -26,7 +29,7 @@ fn shield_icon(r: u8, g: u8, b: u8, glyph: Glyph) -> ksni::Icon {
     for y in 0..s {
         for x in 0..s {
             if is_shield(x, y, s) {
-                set_pixel(&mut data, x, y, s, 255, r, g, b);
+                set_pixel(&mut data, x, y, s, [255, r, g, b]);
             }
         }
     }
@@ -72,13 +75,10 @@ fn is_shield(x: usize, y: usize, s: usize) -> bool {
     (fx - cx).abs() <= half_width
 }
 
-fn set_pixel(data: &mut [u8], x: usize, y: usize, stride: usize, a: u8, r: u8, g: u8, b: u8) {
+fn set_pixel(data: &mut [u8], x: usize, y: usize, stride: usize, argb: [u8; 4]) {
     let idx = (y * stride + x) * 4;
     if idx + 3 < data.len() {
-        data[idx] = a;
-        data[idx + 1] = r;
-        data[idx + 2] = g;
-        data[idx + 3] = b;
+        data[idx..idx + 4].copy_from_slice(&argb);
     }
 }
 
@@ -87,29 +87,32 @@ fn draw_check(data: &mut [u8], s: usize) {
     // Checkmark: from (5,11) down to (9,15) then up to (16,8)
     // Scaled to icon size
     let points: &[(f32, f32, f32, f32)] = &[
-        (5.0, 11.0, 9.0, 15.0),  // descending stroke
-        (9.0, 15.0, 16.0, 8.0),  // ascending stroke
+        (5.0, 11.0, 9.0, 15.0), // descending stroke
+        (9.0, 15.0, 16.0, 8.0), // ascending stroke
     ];
     for &(x1, y1, x2, y2) in points {
         draw_thick_line(
-            data, s,
-            (x1 * s as f32 / 22.0) as i32, (y1 * s as f32 / 22.0) as i32,
-            (x2 * s as f32 / 22.0) as i32, (y2 * s as f32 / 22.0) as i32,
+            data,
+            s,
+            (x1 * s as f32 / 22.0) as i32,
+            (y1 * s as f32 / 22.0) as i32,
+            (x2 * s as f32 / 22.0) as i32,
+            (y2 * s as f32 / 22.0) as i32,
         );
     }
 }
 
 /// Draw a white X.
 fn draw_cross(data: &mut [u8], s: usize) {
-    let points: &[(f32, f32, f32, f32)] = &[
-        (7.0, 8.0, 15.0, 16.0),
-        (15.0, 8.0, 7.0, 16.0),
-    ];
+    let points: &[(f32, f32, f32, f32)] = &[(7.0, 8.0, 15.0, 16.0), (15.0, 8.0, 7.0, 16.0)];
     for &(x1, y1, x2, y2) in points {
         draw_thick_line(
-            data, s,
-            (x1 * s as f32 / 22.0) as i32, (y1 * s as f32 / 22.0) as i32,
-            (x2 * s as f32 / 22.0) as i32, (y2 * s as f32 / 22.0) as i32,
+            data,
+            s,
+            (x1 * s as f32 / 22.0) as i32,
+            (y1 * s as f32 / 22.0) as i32,
+            (x2 * s as f32 / 22.0) as i32,
+            (y2 * s as f32 / 22.0) as i32,
         );
     }
 }
@@ -125,7 +128,7 @@ fn draw_dots(data: &mut [u8], s: usize) {
                 let px = cx + dx;
                 let py = cy + dy;
                 if px < s && py < s {
-                    set_pixel(data, px, py, s, 255, 255, 255, 255);
+                    set_pixel(data, px, py, s, [255, 255, 255, 255]);
                 }
             }
         }
@@ -149,7 +152,7 @@ fn draw_thick_line(data: &mut [u8], s: usize, x1: i32, y1: i32, x2: i32, y2: i32
                 let px = (x + ox) as usize;
                 let py = (y + oy) as usize;
                 if px < s && py < s {
-                    set_pixel(data, px, py, s, 255, 255, 255, 255);
+                    set_pixel(data, px, py, s, [255, 255, 255, 255]);
                 }
             }
         }

@@ -13,8 +13,8 @@ pub fn build_app() {
     let log_buffer = LogBuffer::new(1000);
     let log_writer = LogBufferMakeWriter::new(log_buffer.clone());
 
-    let time_format = time::format_description::parse("[hour]:[minute]:[second]")
-        .expect("invalid time format");
+    let time_format =
+        time::format_description::parse("[hour]:[minute]:[second]").expect("invalid time format");
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let timer = OffsetTime::new(offset, time_format.clone());
     let timer2 = OffsetTime::new(offset, time_format.clone());

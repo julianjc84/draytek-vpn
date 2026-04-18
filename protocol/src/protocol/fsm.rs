@@ -3,7 +3,7 @@
 /// Takes events in, returns `Vec<FsmAction>` out. The tunnel engine
 /// executes the actions. Ported from PppNegotiationFsm.java.
 use crate::constants::*;
-use crate::protocol::ppp_control::{PppControlFrame, PppControlOption, parse_options};
+use crate::protocol::ppp_control::{parse_options, PppControlFrame, PppControlOption};
 
 /// FSM states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -340,8 +340,7 @@ impl PppFsm {
             Ok(opts) => opts,
             Err(_) => {
                 // Can't parse options — reject the whole frame
-                let reject =
-                    PppControlFrame::config_reject(frame.identifier, &[]);
+                let reject = PppControlFrame::config_reject(frame.identifier, &[]);
                 return EvalResult::NakOrReject(reject);
             }
         };
@@ -509,10 +508,7 @@ mod tests {
 
     /// Helper to create a simple LCP FSM for testing.
     fn test_lcp_fsm() -> PppFsm {
-        let desired_local = vec![PppControlOption::new(
-            PPP_LCP_CONFIG_MRU,
-            vec![0x05, 0x00],
-        )];
+        let desired_local = vec![PppControlOption::new(PPP_LCP_CONFIG_MRU, vec![0x05, 0x00])];
 
         let acceptable_remote = vec![
             PppControlOption::new(PPP_LCP_MAGIC_NUM, vec![]),
@@ -659,11 +655,7 @@ mod tests {
         // 10 timeouts should resend Config-Request
         for i in 0..PPP_RESTART_LIMIT {
             let actions = fsm.handle_event(FsmEvent::Timeout);
-            assert_eq!(
-                actions.len(),
-                1,
-                "Timeout {i} should produce a SendFrame"
-            );
+            assert_eq!(actions.len(), 1, "Timeout {i} should produce a SendFrame");
             match &actions[0] {
                 FsmAction::SendFrame(f) => assert_eq!(f.code, PPP_CONFIG_REQ),
                 _ => panic!("Expected SendFrame on timeout {i}"),

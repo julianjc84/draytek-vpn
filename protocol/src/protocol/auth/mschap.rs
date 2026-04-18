@@ -219,18 +219,10 @@ mod tests {
         let username = b"testuser";
         let password = b"testpass";
 
-        let result1 = do_mschap_v2_with_peer_challenge(
-            username,
-            password,
-            &auth_challenge,
-            &peer_challenge,
-        );
-        let result2 = do_mschap_v2_with_peer_challenge(
-            username,
-            password,
-            &auth_challenge,
-            &peer_challenge,
-        );
+        let result1 =
+            do_mschap_v2_with_peer_challenge(username, password, &auth_challenge, &peer_challenge);
+        let result2 =
+            do_mschap_v2_with_peer_challenge(username, password, &auth_challenge, &peer_challenge);
 
         assert_eq!(result1.len(), 49);
         assert_eq!(result1, result2);
@@ -272,8 +264,7 @@ mod tests {
         ];
 
         // Expected ChallengeHash (first 8 bytes of SHA1)
-        let expected_challenge_hash: [u8; 8] =
-            [0xD0, 0x2E, 0x43, 0x86, 0xBC, 0xE9, 0x12, 0x26];
+        let expected_challenge_hash: [u8; 8] = [0xD0, 0x2E, 0x43, 0x86, 0xBC, 0xE9, 0x12, 0x26];
         let ch = challenge_hash(&peer_challenge, &auth_challenge, username);
         assert_eq!(ch, expected_challenge_hash, "ChallengeHash mismatch");
 

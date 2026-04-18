@@ -34,9 +34,7 @@ pub fn show_profile_editor(
     let prefs_page = adw::PreferencesPage::new();
 
     // Connection group
-    let conn_group = adw::PreferencesGroup::builder()
-        .title("Connection")
-        .build();
+    let conn_group = adw::PreferencesGroup::builder().title("Connection").build();
 
     let name_row = adw::EntryRow::builder()
         .title("Profile Name")
@@ -68,9 +66,7 @@ pub fn show_profile_editor(
     prefs_page.add(&conn_group);
 
     // Options group
-    let opts_group = adw::PreferencesGroup::builder()
-        .title("Options")
-        .build();
+    let opts_group = adw::PreferencesGroup::builder().title("Options").build();
 
     let self_signed_row = adw::SwitchRow::builder()
         .title("Accept Self-Signed Certificates")
@@ -79,9 +75,11 @@ pub fn show_profile_editor(
         .build();
     let route_remote_row = adw::SwitchRow::builder()
         .title("Route Remote Network")
-        .tooltip_text("Automatically adds a route for the gateway's subnet when connected.\n\
+        .tooltip_text(
+            "Automatically adds a route for the gateway's subnet when connected.\n\
              e.g. gateway 192.168.1.1 → auto-adds route 192.168.1.0/24,\n\
-             so all 192.168.1.* traffic goes through the VPN.")
+             so all 192.168.1.* traffic goes through the VPN.",
+        )
         .active(true)
         .build();
     let default_gw_row = adw::SwitchRow::builder()
@@ -94,11 +92,6 @@ pub fn show_profile_editor(
         .tooltip_text("Automatically send periodic pings when connected to prevent the router's idle timeout from dropping the tunnel")
         .active(false)
         .build();
-    let auto_reconnect_row = adw::SwitchRow::builder()
-        .title("Auto-Reconnect")
-        .tooltip_text("Automatically reconnect if the tunnel drops unexpectedly")
-        .active(false)
-        .build();
     let mru_row = adw::SpinRow::builder()
         .title("MRU (0 = default 1280)")
         .tooltip_text("Maximum Receive Unit — largest packet size we accept. 0 uses the default (1280). The router may negotiate a different value.")
@@ -106,10 +99,12 @@ pub fn show_profile_editor(
         .build();
     let routes_row = adw::EntryRow::builder()
         .title("Additional Routes (comma-separated CIDR)")
-        .tooltip_text("Subnets to route through the VPN tunnel (CIDR notation).\n\
+        .tooltip_text(
+            "Subnets to route through the VPN tunnel (CIDR notation).\n\
              e.g. 192.168.1.0/24 routes all 192.168.1.* traffic via VPN.\n\
              /24 = whole subnet (254 hosts), /32 = single host.\n\
-             Without routes, no traffic flows through the tunnel.")
+             Without routes, no traffic flows through the tunnel.",
+        )
         .build();
 
     // When default gateway is on, routing options are redundant
@@ -133,7 +128,6 @@ pub fn show_profile_editor(
     opts_group.add(&routes_row);
     opts_group.add(&default_gw_row);
     opts_group.add(&keepalive_row);
-    opts_group.add(&auto_reconnect_row);
     opts_group.add(&self_signed_row);
     opts_group.add(&mru_row);
     prefs_page.add(&opts_group);
@@ -144,14 +138,12 @@ pub fn show_profile_editor(
         server_row.set_text(&profile.server);
         port_row.set_value(profile.port as f64);
         username_row.set_text(&profile.username);
-        let pw = config::retrieve_password(&profile.name)
-            .unwrap_or_default();
+        let pw = config::retrieve_password(&profile.name).unwrap_or_default();
         password_row.set_text(&pw);
         self_signed_row.set_active(profile.accept_self_signed);
         route_remote_row.set_active(profile.route_remote_network);
         default_gw_row.set_active(profile.default_gateway);
         keepalive_row.set_active(profile.keepalive);
-        auto_reconnect_row.set_active(profile.auto_reconnect);
         mru_row.set_value(profile.mru as f64);
         routes_row.set_text(&profile.routes.join(", "));
     }
@@ -170,22 +162,22 @@ pub fn show_profile_editor(
     btn_box.set_margin_start(24);
     btn_box.set_margin_end(24);
     // Delete button — only when editing an existing profile (left side)
-    if on_delete.is_some() {
+    if let Some(on_delete) = on_delete {
         let delete_btn = gtk4::Button::builder()
             .label("Delete")
             .css_classes(["destructive-action"])
             .build();
 
         let dialog_ref = dialog.clone();
-        let on_delete = std::rc::Rc::new(std::cell::RefCell::new(Some(on_delete.unwrap())));
-        let profile_name = existing
-            .map(|p| p.name.clone())
-            .unwrap_or_default();
+        let on_delete = std::rc::Rc::new(std::cell::RefCell::new(Some(on_delete)));
+        let profile_name = existing.map(|p| p.name.clone()).unwrap_or_default();
 
         delete_btn.connect_clicked(move |btn| {
             let confirm = adw::AlertDialog::builder()
                 .heading("Delete Profile?")
-                .body(format!("Are you sure you want to delete \"{profile_name}\"? This cannot be undone."))
+                .body(format!(
+                    "Are you sure you want to delete \"{profile_name}\"? This cannot be undone."
+                ))
                 .build();
             confirm.add_response("cancel", "Cancel");
             confirm.add_response("delete", "Delete");
@@ -242,7 +234,6 @@ pub fn show_profile_editor(
             route_remote_network: route_remote_row.is_active(),
             default_gateway: default_gw_row.is_active(),
             keepalive: keepalive_row.is_active(),
-            auto_reconnect: auto_reconnect_row.is_active(),
             mru: mru_row.value() as u16,
             routes,
         };

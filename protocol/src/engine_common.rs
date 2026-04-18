@@ -1,12 +1,27 @@
-/// Common engine helpers shared between GUI and NM plugin data loops.
+//! Common engine helpers shared between GUI and NM plugin data loops.
+
 use anyhow::{bail, Context, Result};
 use std::net::Ipv4Addr;
 use std::pin::Pin;
 use tokio::io::AsyncWriteExt;
 use tracing::info;
 
-use crate::protocol::fsm::FsmAction;
+use crate::protocol::fsm::{FsmAction, PppFsm};
 use crate::protocol::ppp::PppFrame;
+
+/// LCP + IPCP finite state machines, used together by both data loops.
+pub struct PppFsmPair {
+    pub lcp: PppFsm,
+    pub ipcp: PppFsm,
+}
+
+/// Tunnel IP configuration negotiated during IPCP.
+#[derive(Clone, Copy)]
+pub struct TunnelAddrs {
+    pub mtu: u16,
+    pub local_ip: Ipv4Addr,
+    pub remote_ip: Ipv4Addr,
+}
 
 /// Send a PPP frame wrapped in SSTP over the TLS stream.
 pub async fn send_ppp_frame<S: tokio::io::AsyncWrite + Unpin>(
@@ -54,14 +69,14 @@ pub fn check_shutdown(actions: &[FsmAction]) -> Result<()> {
 }
 
 /// Build a minimal ICMP echo request (ping) packet with IPv4 header.
-pub fn build_icmp_echo(src: Ipv4Addr, dst: Ipv4Addr, seq: u16) -> Vec<u8> {
+fn build_icmp_echo(src: Ipv4Addr, dst: Ipv4Addr, seq: u16) -> Vec<u8> {
     let ping_id: u16 = 0x4456; // "DV" for DrayTek VPN
 
     // ICMP Echo Request: type=8, code=0, checksum, id, seq
     let mut icmp = vec![0u8; 8];
     icmp[0] = 8; // type: echo request
     icmp[1] = 0; // code
-    // checksum at [2..4] filled below
+                 // checksum at [2..4] filled below
     icmp[2] = 0;
     icmp[3] = 0;
     icmp[4] = (ping_id >> 8) as u8;
@@ -80,16 +95,18 @@ pub fn build_icmp_echo(src: Ipv4Addr, dst: Ipv4Addr, seq: u16) -> Vec<u8> {
     let dst = dst.octets();
     let mut ip = vec![0u8; 20];
     ip[0] = 0x45; // version=4, IHL=5
-    ip[1] = 0;    // DSCP/ECN
+    ip[1] = 0; // DSCP/ECN
     ip[2] = (total_len >> 8) as u8;
     ip[3] = total_len as u8;
-    ip[4] = 0; ip[5] = 0; // identification
+    ip[4] = 0;
+    ip[5] = 0; // identification
     ip[6] = 0x40; // flags: Don't Fragment
-    ip[7] = 0;    // fragment offset
-    ip[8] = 64;   // TTL
-    ip[9] = 1;    // protocol: ICMP
-    // header checksum at [10..12] filled below
-    ip[10] = 0; ip[11] = 0;
+    ip[7] = 0; // fragment offset
+    ip[8] = 64; // TTL
+    ip[9] = 1; // protocol: ICMP
+               // header checksum at [10..12] filled below
+    ip[10] = 0;
+    ip[11] = 0;
     ip[12..16].copy_from_slice(&src);
     ip[16..20].copy_from_slice(&dst);
 
@@ -102,7 +119,7 @@ pub fn build_icmp_echo(src: Ipv4Addr, dst: Ipv4Addr, seq: u16) -> Vec<u8> {
 }
 
 /// Standard internet checksum (RFC 1071).
-pub fn internet_checksum(data: &[u8]) -> u16 {
+fn internet_checksum(data: &[u8]) -> u16 {
     let mut sum: u32 = 0;
     let mut i = 0;
     while i + 1 < data.len() {
@@ -211,9 +228,7 @@ impl PingKeeper {
 
     /// If enabled and interval has elapsed, returns a ping frame to send.
     pub fn maybe_send(&mut self) -> Option<PppFrame> {
-        if self.enabled
-            && self.last_sent.elapsed() >= tokio::time::Duration::from_secs(30)
-        {
+        if self.enabled && self.last_sent.elapsed() >= tokio::time::Duration::from_secs(30) {
             self.send_ping()
         } else {
             None

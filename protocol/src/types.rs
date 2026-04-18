@@ -1,4 +1,5 @@
-/// Shared types used by both the GUI app and NM plugin.
+//! Shared types used by both the GUI app and NM plugin.
+
 use bytes::BytesMut;
 use std::net::Ipv4Addr;
 
@@ -23,8 +24,6 @@ pub struct ConnectionProfile {
     pub routes: Vec<String>,
     /// Enable keepalive pings automatically on connect.
     pub keepalive: bool,
-    /// Auto-reconnect on disconnect.
-    pub auto_reconnect: bool,
     /// Maximum Receive Unit (MRU) we propose during LCP. 0 = use default (1280).
     pub mru: u16,
 }
@@ -42,7 +41,6 @@ impl Default for ConnectionProfile {
             route_remote_network: true,
             routes: Vec::new(),
             keepalive: false,
-            auto_reconnect: false,
             mru: 0,
         }
     }

@@ -37,7 +37,8 @@ pub async fn connect(
 
     // Step 2: TLS handshake
     info!("Starting TLS handshake");
-    let mut builder = SslConnector::builder(SslMethod::tls()).context("Failed to create SSL connector")?;
+    let mut builder =
+        SslConnector::builder(SslMethod::tls()).context("Failed to create SSL connector")?;
     // DrayTek routers require legacy TLS renegotiation
     builder.set_options(SslOptions::ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
     if accept_self_signed {
@@ -51,8 +52,7 @@ pub async fn connect(
         .into_ssl(server)
         .context("Failed to create SSL instance")?;
 
-    let mut tls_stream =
-        SslStream::new(ssl, tcp_stream).context("Failed to create SslStream")?;
+    let mut tls_stream = SslStream::new(ssl, tcp_stream).context("Failed to create SslStream")?;
 
     Pin::new(&mut tls_stream)
         .connect()
@@ -62,8 +62,8 @@ pub async fn connect(
     info!("TLS connection established");
 
     // Step 3: HTTP CONNECT handshake
-    let credentials = base64::engine::general_purpose::STANDARD
-        .encode(format!("{username}:{password}"));
+    let credentials =
+        base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
 
     let request = format!(
         "CONNECT / HTTP/1.0\r\n\
@@ -129,10 +129,7 @@ mod tests {
     #[test]
     fn test_parse_http_status() {
         assert_eq!(parse_http_status("HTTP/1.0 200 OK").unwrap(), 200);
-        assert_eq!(
-            parse_http_status("HTTP/1.1 403 Forbidden").unwrap(),
-            403
-        );
+        assert_eq!(parse_http_status("HTTP/1.1 403 Forbidden").unwrap(), 403);
         assert_eq!(
             parse_http_status("HTTP/1.0 500 Internal Server Error").unwrap(),
             500

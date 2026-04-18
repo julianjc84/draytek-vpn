@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["standalone", "protocol", "networkmanager", "networkmanagertray"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"

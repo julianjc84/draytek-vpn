@@ -6,10 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use draytek_vpn_protocol::constants::*;
 use draytek_vpn_protocol::connection;
+use draytek_vpn_protocol::constants::*;
 use draytek_vpn_protocol::engine_common::{
-    execute_actions, send_ppp_frame, PingKeeper, TrafficStats,
+    execute_actions, send_ppp_frame, PingKeeper, PppFsmPair, TrafficStats, TunnelAddrs,
 };
 use draytek_vpn_protocol::keepalive::KeepaliveTracker;
 use draytek_vpn_protocol::negotiate::{self, NegotiationStatus};
@@ -27,13 +27,11 @@ use crate::tunnel::tun_device;
 const READ_BUF_SIZE: usize = 2048;
 
 /// Adapter implementing NegotiationStatus for the GUI app.
-struct GuiNegotiationStatusMut<'a> {
+struct GuiNegotiationStatus<'a> {
     status_tx: &'a GlibSender<TunnelStatus>,
-    #[allow(dead_code)]
-    cmd_rx: &'a mut mpsc::UnboundedReceiver<TunnelCommand>,
 }
 
-impl NegotiationStatus for GuiNegotiationStatusMut<'_> {
+impl NegotiationStatus for GuiNegotiationStatus<'_> {
     fn on_negotiating_lcp(&self) {
         self.status_tx.send(TunnelStatus::NegotiatingLcp);
     }
@@ -98,10 +96,7 @@ async fn run_inner(
     status_tx.send(TunnelStatus::Handshaking);
 
     // Phase 2: PPP negotiation (LCP + Auth + IPCP)
-    let gui_status = GuiNegotiationStatusMut {
-        status_tx,
-        cmd_rx,
-    };
+    let gui_status = GuiNegotiationStatus { status_tx };
     let mut neg = match negotiate::negotiate(&profile, &mut tls_stream, &gui_status).await? {
         Some(n) => n,
         None => return Ok(()), // user disconnected during negotiation
@@ -174,17 +169,23 @@ async fn run_inner(
     });
 
     // Phase 4: Data loop — teardown is guaranteed via the block below
+    let mut fsms = PppFsmPair {
+        lcp: neg.lcp_fsm,
+        ipcp: neg.ipcp_fsm,
+    };
+    let addrs = TunnelAddrs {
+        mtu: neg.mtu,
+        local_ip: neg.local_ip,
+        remote_ip: neg.remote_ip,
+    };
     let data_result = data_loop(
         &tun,
         &mut tls_stream,
         &mut neg.socket_buf,
-        &mut neg.lcp_fsm,
-        &mut neg.ipcp_fsm,
+        &mut fsms,
         status_tx,
         cmd_rx,
-        neg.mtu,
-        neg.local_ip,
-        neg.remote_ip,
+        addrs,
     )
     .await;
 
@@ -203,20 +204,17 @@ async fn data_loop(
     tun: &tun_rs::AsyncDevice,
     tls_stream: &mut tokio_openssl::SslStream<tokio::net::TcpStream>,
     socket_buf: &mut bytes::BytesMut,
-    lcp_fsm: &mut draytek_vpn_protocol::protocol::fsm::PppFsm,
-    ipcp_fsm: &mut draytek_vpn_protocol::protocol::fsm::PppFsm,
+    fsms: &mut PppFsmPair,
     status_tx: &GlibSender<TunnelStatus>,
     cmd_rx: &mut mpsc::UnboundedReceiver<TunnelCommand>,
-    mtu: u16,
-    local_ip: std::net::Ipv4Addr,
-    remote_ip: std::net::Ipv4Addr,
+    addrs: TunnelAddrs,
 ) -> Result<()> {
     info!("Entering data transfer loop");
     let mut keepalive = KeepaliveTracker::new();
     let mut tun_buf = vec![0u8; MAX_PACKET_SIZE + 64];
     let mut read_buf = [0u8; READ_BUF_SIZE];
-    let mut stats = TrafficStats::new(mtu);
-    let mut ping = PingKeeper::new(local_ip, remote_ip);
+    let mut stats = TrafficStats::new(addrs.mtu);
+    let mut ping = PingKeeper::new(addrs.local_ip, addrs.remote_ip);
 
     loop {
         let keepalive_delay = keepalive.next_check_duration();
@@ -237,7 +235,7 @@ async fn data_loop(
             }
 
             // Read from TLS socket
-            ssl_result = async { Pin::new(&mut *tls_stream).read(&mut read_buf).await } => {
+            ssl_result = async { std::pin::Pin::new(&mut *tls_stream).read(&mut read_buf).await } => {
                 let ssl_result: std::io::Result<usize> = ssl_result;
                 let n = ssl_result.context("TLS read failed in data loop")?;
                 if n == 0 {
@@ -284,13 +282,13 @@ async fn data_loop(
                             send_ppp_frame(&ppp_frame, tls_stream).await?;
                             return Ok(());
                         }
-                        let actions = lcp_fsm.handle_event(FsmEvent::ReceiveFrame(ctrl));
-                        execute_actions(&actions, PPP_LCP, lcp_fsm.tag, tls_stream).await?;
+                        let actions = fsms.lcp.handle_event(FsmEvent::ReceiveFrame(ctrl));
+                        execute_actions(&actions, PPP_LCP, fsms.lcp.tag, tls_stream).await?;
                     } else if ppp.is_ipcp() {
                         let ctrl = PppControlFrame::parse(&ppp.information)
                             .context("Failed to parse IPCP frame in data loop")?;
-                        let actions = ipcp_fsm.handle_event(FsmEvent::ReceiveFrame(ctrl));
-                        execute_actions(&actions, PPP_IPCP, ipcp_fsm.tag, tls_stream).await?;
+                        let actions = fsms.ipcp.handle_event(FsmEvent::ReceiveFrame(ctrl));
+                        execute_actions(&actions, PPP_IPCP, fsms.ipcp.tag, tls_stream).await?;
                     } else if ppp.is_ccp() {
                         let ctrl = PppControlFrame::parse(&ppp.information)
                             .context("Failed to parse CCP frame in data loop")?;
@@ -311,7 +309,7 @@ async fn data_loop(
             _ = tokio::time::sleep(keepalive_delay) => {
                 if let Some(counter) = keepalive.should_send_request() {
                     let pkt = SstpPacket::keepalive_request(counter);
-                    Pin::new(&mut *tls_stream)
+                    std::pin::Pin::new(&mut *tls_stream)
                         .write_all(&pkt.to_bytes())
                         .await
                         .context("Failed to send keepalive request")?;
@@ -349,11 +347,11 @@ async fn data_loop(
                         info!("Disconnect requested");
                         status_tx.send(TunnelStatus::Disconnecting);
                         // Send LCP terminate
-                        let actions = lcp_fsm.handle_event(FsmEvent::Close);
-                        execute_actions(&actions, PPP_LCP, lcp_fsm.tag, tls_stream).await?;
+                        let actions = fsms.lcp.handle_event(FsmEvent::Close);
+                        execute_actions(&actions, PPP_LCP, fsms.lcp.tag, tls_stream).await?;
                         // Send SSTP close
                         let close_pkt = SstpPacket::close();
-                        Pin::new(&mut *tls_stream)
+                        std::pin::Pin::new(&mut *tls_stream)
                             .write_all(&close_pkt.to_bytes())
                             .await
                             .context("Failed to send SSTP CLOSE")?;

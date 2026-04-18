@@ -1,21 +1,25 @@
-/// Tunnel orchestrator for the NM plugin.
-///
-/// Connects, negotiates, creates TUN (as root), emits D-Bus signals, runs data loop.
+//! Tunnel orchestrator for the NM plugin.
+//!
+//! Connects, negotiates, creates TUN (as root), emits D-Bus signals, runs data loop.
+
 use anyhow::{bail, Context, Result};
 use bytes::BytesMut;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tracing::{debug, error, info, warn};
-use zbus::Connection;
 use zbus::zvariant::OwnedValue;
+use zbus::Connection;
+
+use crate::plugin::nm_vpn_failure;
 
 use draytek_vpn_protocol::connection;
 use draytek_vpn_protocol::constants::*;
 use draytek_vpn_protocol::engine_common::{
-    execute_actions, send_ppp_frame, PingKeeper, TrafficStats,
+    execute_actions, send_ppp_frame, PingKeeper, PppFsmPair, TrafficStats, TunnelAddrs,
 };
 use draytek_vpn_protocol::keepalive::KeepaliveTracker;
 use draytek_vpn_protocol::negotiate::{self, NegotiationStatus};
@@ -83,10 +87,7 @@ pub fn parse_settings(
         .get("username")
         .context("Missing 'username' in vpn.data")?
         .clone();
-    let password = secrets_map
-        .get("password")
-        .cloned()
-        .unwrap_or_default();
+    let password = secrets_map.get("password").cloned().unwrap_or_default();
     let verify_cert = data_map
         .get("verify-cert")
         .map(|s: &String| s == "yes")
@@ -105,10 +106,6 @@ pub fn parse_settings(
         .unwrap_or(true);
     let keepalive = data_map
         .get("keepalive")
-        .map(|s: &String| s == "yes")
-        .unwrap_or(false);
-    let auto_reconnect = data_map
-        .get("auto-reconnect")
         .map(|s: &String| s == "yes")
         .unwrap_or(false);
     let routes: Vec<String> = data_map
@@ -132,15 +129,15 @@ pub fn parse_settings(
         route_remote_network,
         routes,
         keepalive,
-        auto_reconnect,
         mru,
     })
 }
 
-/// NM plugin negotiation status — emits D-Bus signals.
+/// NM plugin negotiation status. Sync callbacks can't emit D-Bus signals
+/// directly, so `on_auth_failed` flips a flag that `spawn_tunnel` reads on the
+/// error path to choose between LOGIN_FAILED and CONNECT_FAILED.
 struct NmNegotiationStatus {
-    #[allow(dead_code)]
-    shutdown: Arc<Notify>,
+    auth_failed: Arc<AtomicBool>,
 }
 
 impl NegotiationStatus for NmNegotiationStatus {
@@ -158,6 +155,7 @@ impl NegotiationStatus for NmNegotiationStatus {
 
     fn on_auth_failed(&self) {
         error!("Authentication failed");
+        self.auth_failed.store(true, Ordering::SeqCst);
     }
 
     fn on_disconnecting(&self) {
@@ -173,10 +171,18 @@ impl NegotiationStatus for NmNegotiationStatus {
 pub async fn spawn_tunnel(profile: ConnectionProfile, conn: Connection) -> TunnelHandle {
     let shutdown = Arc::new(Notify::new());
     let shutdown_clone = shutdown.clone();
+    let auth_failed = Arc::new(AtomicBool::new(false));
+    let auth_failed_clone = auth_failed.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = run_tunnel(profile, conn, shutdown_clone).await {
+        if let Err(e) = run_tunnel(profile, conn.clone(), shutdown_clone, auth_failed_clone).await {
             error!("Tunnel error: {e:#}");
+            let reason = if auth_failed.load(Ordering::SeqCst) {
+                nm_vpn_failure::LOGIN_FAILED
+            } else {
+                nm_vpn_failure::CONNECT_FAILED
+            };
+            emit_failure(&conn, reason).await;
         }
     });
 
@@ -190,7 +196,9 @@ async fn emit_state_changed(conn: &Connection, state: u32) {
         .await;
     if let Ok(iface) = iface_ref {
         let emitter = iface.signal_emitter();
-        crate::plugin::VpnPlugin::state_changed(emitter, state).await.ok();
+        crate::plugin::VpnPlugin::state_changed(emitter, state)
+            .await
+            .ok();
     }
 }
 
@@ -205,18 +213,6 @@ async fn emit_config(conn: &Connection, config: HashMap<String, OwnedValue>) {
     }
 }
 
-async fn emit_ip4_config(conn: &Connection, config: HashMap<String, OwnedValue>) {
-    let iface_ref = conn
-        .object_server()
-        .interface::<_, crate::plugin::VpnPlugin>("/org/freedesktop/NetworkManager/VPN/Plugin")
-        .await;
-    if let Ok(iface) = iface_ref {
-        let emitter = iface.signal_emitter();
-        crate::plugin::VpnPlugin::ip4_config(emitter, config).await.ok();
-    }
-}
-
-#[allow(dead_code)]
 async fn emit_failure(conn: &Connection, reason: u32) {
     let iface_ref = conn
         .object_server()
@@ -224,7 +220,22 @@ async fn emit_failure(conn: &Connection, reason: u32) {
         .await;
     if let Ok(iface) = iface_ref {
         let emitter = iface.signal_emitter();
-        crate::plugin::VpnPlugin::failure(emitter, reason).await.ok();
+        crate::plugin::VpnPlugin::failure(emitter, reason)
+            .await
+            .ok();
+    }
+}
+
+async fn emit_ip4_config(conn: &Connection, config: HashMap<String, OwnedValue>) {
+    let iface_ref = conn
+        .object_server()
+        .interface::<_, crate::plugin::VpnPlugin>("/org/freedesktop/NetworkManager/VPN/Plugin")
+        .await;
+    if let Ok(iface) = iface_ref {
+        let emitter = iface.signal_emitter();
+        crate::plugin::VpnPlugin::ip4_config(emitter, config)
+            .await
+            .ok();
     }
 }
 
@@ -232,6 +243,7 @@ async fn run_tunnel(
     profile: ConnectionProfile,
     conn: Connection,
     shutdown: Arc<Notify>,
+    auth_failed: Arc<AtomicBool>,
 ) -> Result<()> {
     // Phase 1: TLS + HTTP CONNECT
     info!("Connecting to {}:{}", profile.server, profile.port);
@@ -245,9 +257,7 @@ async fn run_tunnel(
     .await?;
 
     // Phase 2: PPP negotiation
-    let nm_status = NmNegotiationStatus {
-        shutdown: shutdown.clone(),
-    };
+    let nm_status = NmNegotiationStatus { auth_failed };
     let mut neg = match negotiate::negotiate(&profile, &mut tls_stream, &nm_status).await? {
         Some(n) => n,
         None => return Ok(()),
@@ -263,24 +273,66 @@ async fn run_tunnel(
 
     // Phase 4: Emit Config and Ip4Config to NM
     let mut config = HashMap::new();
-    config.insert("tundev".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(TUN_DEVICE_NAME.to_string())).unwrap());
-    config.insert("gateway".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(neg.remote_ip.to_bits().swap_bytes())).unwrap());
-    config.insert("mtu".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(neg.mtu as u32)).unwrap());
-    config.insert("has-ip4".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(true)).unwrap());
+    config.insert(
+        "tundev".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(TUN_DEVICE_NAME.to_string()))
+            .expect("NM config value conversion is infallible for primitive types"),
+    );
+    config.insert(
+        "gateway".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(
+            neg.remote_ip.to_bits().swap_bytes(),
+        ))
+        .unwrap(),
+    );
+    config.insert(
+        "mtu".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(neg.mtu as u32))
+            .expect("NM config value conversion is infallible for primitive types"),
+    );
+    config.insert(
+        "has-ip4".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(true))
+            .expect("NM config value conversion is infallible for primitive types"),
+    );
     emit_config(&conn, config).await;
 
     // NM expects IPv4 addresses as u32 in network byte order (big-endian),
     // but stored as a little-endian u32 value — i.e. the octets are reversed.
     // Ipv4Addr::to_bits() gives big-endian, so we swap to get what NM wants.
     let mut ip4 = HashMap::new();
-    ip4.insert("address".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(neg.local_ip.to_bits().swap_bytes())).unwrap());
-    ip4.insert("prefix".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(32u32)).unwrap());
-    ip4.insert("gateway".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(neg.remote_ip.to_bits().swap_bytes())).unwrap());
+    ip4.insert(
+        "address".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(
+            neg.local_ip.to_bits().swap_bytes(),
+        ))
+        .unwrap(),
+    );
+    ip4.insert(
+        "prefix".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(32u32))
+            .expect("NM config value conversion is infallible for primitive types"),
+    );
+    ip4.insert(
+        "gateway".to_string(),
+        OwnedValue::try_from(zbus::zvariant::Value::new(
+            neg.remote_ip.to_bits().swap_bytes(),
+        ))
+        .unwrap(),
+    );
     if let Some(dns) = neg.dns {
-        ip4.insert("dns".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(vec![dns.to_bits().swap_bytes()])).unwrap());
+        ip4.insert(
+            "dns".to_string(),
+            OwnedValue::try_from(zbus::zvariant::Value::new(vec![dns.to_bits().swap_bytes()]))
+                .unwrap(),
+        );
     }
     if !profile.default_gateway {
-        ip4.insert("never-default".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(true)).unwrap());
+        ip4.insert(
+            "never-default".to_string(),
+            OwnedValue::try_from(zbus::zvariant::Value::new(true))
+                .expect("NM config value conversion is infallible for primitive types"),
+        );
     }
 
     // Build routes: auto-route gateway's /24 subnet if enabled, plus manual routes
@@ -305,7 +357,11 @@ async fn run_tunnel(
             .collect();
         if !nm_routes.is_empty() {
             info!("Emitting {} route(s) to NM", nm_routes.len());
-            ip4.insert("routes".to_string(), OwnedValue::try_from(zbus::zvariant::Value::new(nm_routes)).unwrap());
+            ip4.insert(
+                "routes".to_string(),
+                OwnedValue::try_from(zbus::zvariant::Value::new(nm_routes))
+                    .expect("NM config value conversion is infallible for primitive types"),
+            );
         }
     }
 
@@ -315,15 +371,21 @@ async fn run_tunnel(
     emit_state_changed(&conn, 4).await; // STARTED
 
     // Phase 5: Data loop
+    let mut fsms = PppFsmPair {
+        lcp: neg.lcp_fsm,
+        ipcp: neg.ipcp_fsm,
+    };
+    let addrs = TunnelAddrs {
+        mtu: neg.mtu,
+        local_ip: neg.local_ip,
+        remote_ip: neg.remote_ip,
+    };
     let data_result = data_loop(
         &tun,
         &mut tls_stream,
         &mut neg.socket_buf,
-        &mut neg.lcp_fsm,
-        &mut neg.ipcp_fsm,
-        neg.mtu,
-        neg.local_ip,
-        neg.remote_ip,
+        &mut fsms,
+        addrs,
         &shutdown,
         profile.keepalive,
     )
@@ -344,11 +406,8 @@ async fn data_loop(
     tun: &tun_rs::AsyncDevice,
     tls_stream: &mut tokio_openssl::SslStream<tokio::net::TcpStream>,
     socket_buf: &mut BytesMut,
-    lcp_fsm: &mut draytek_vpn_protocol::protocol::fsm::PppFsm,
-    ipcp_fsm: &mut draytek_vpn_protocol::protocol::fsm::PppFsm,
-    mtu: u16,
-    local_ip: Ipv4Addr,
-    remote_ip: Ipv4Addr,
+    fsms: &mut PppFsmPair,
+    addrs: TunnelAddrs,
     shutdown: &Notify,
     keepalive_enabled: bool,
 ) -> Result<()> {
@@ -356,8 +415,8 @@ async fn data_loop(
     let mut keepalive = KeepaliveTracker::new();
     let mut tun_buf = vec![0u8; MAX_PACKET_SIZE + 64];
     let mut read_buf = [0u8; READ_BUF_SIZE];
-    let mut stats = TrafficStats::new(mtu);
-    let mut ping = PingKeeper::new(local_ip, remote_ip);
+    let mut stats = TrafficStats::new(addrs.mtu);
+    let mut ping = PingKeeper::new(addrs.local_ip, addrs.remote_ip);
     if keepalive_enabled {
         ping.set_enabled(true);
     }
@@ -381,7 +440,7 @@ async fn data_loop(
             }
 
             // Read from TLS socket
-            ssl_result = async { Pin::new(&mut *tls_stream).read(&mut read_buf).await } => {
+            ssl_result = async { std::pin::Pin::new(&mut *tls_stream).read(&mut read_buf).await } => {
                 let ssl_result: std::io::Result<usize> = ssl_result;
                 let n = ssl_result.context("TLS read failed in data loop")?;
                 if n == 0 {
@@ -426,13 +485,13 @@ async fn data_loop(
                             send_ppp_frame(&ppp_frame, tls_stream).await?;
                             return Ok(());
                         }
-                        let actions = lcp_fsm.handle_event(FsmEvent::ReceiveFrame(ctrl));
-                        execute_actions(&actions, PPP_LCP, lcp_fsm.tag, tls_stream).await?;
+                        let actions = fsms.lcp.handle_event(FsmEvent::ReceiveFrame(ctrl));
+                        execute_actions(&actions, PPP_LCP, fsms.lcp.tag, tls_stream).await?;
                     } else if ppp.is_ipcp() {
                         let ctrl = PppControlFrame::parse(&ppp.information)
                             .context("Failed to parse IPCP frame")?;
-                        let actions = ipcp_fsm.handle_event(FsmEvent::ReceiveFrame(ctrl));
-                        execute_actions(&actions, PPP_IPCP, ipcp_fsm.tag, tls_stream).await?;
+                        let actions = fsms.ipcp.handle_event(FsmEvent::ReceiveFrame(ctrl));
+                        execute_actions(&actions, PPP_IPCP, fsms.ipcp.tag, tls_stream).await?;
                     } else if ppp.is_ccp() {
                         let ctrl = PppControlFrame::parse(&ppp.information)
                             .context("Failed to parse CCP frame")?;
@@ -453,7 +512,7 @@ async fn data_loop(
             _ = tokio::time::sleep(keepalive_delay) => {
                 if let Some(counter) = keepalive.should_send_request() {
                     let pkt = SstpPacket::keepalive_request(counter);
-                    Pin::new(&mut *tls_stream)
+                    std::pin::Pin::new(&mut *tls_stream)
                         .write_all(&pkt.to_bytes())
                         .await
                         .context("Failed to send keepalive")?;
@@ -469,10 +528,10 @@ async fn data_loop(
             // Disconnect signal from NM
             _ = shutdown.notified() => {
                 info!("Disconnect requested by NM");
-                let actions = lcp_fsm.handle_event(FsmEvent::Close);
-                execute_actions(&actions, PPP_LCP, lcp_fsm.tag, tls_stream).await?;
+                let actions = fsms.lcp.handle_event(FsmEvent::Close);
+                execute_actions(&actions, PPP_LCP, fsms.lcp.tag, tls_stream).await?;
                 let close_pkt = SstpPacket::close();
-                Pin::new(&mut *tls_stream)
+                std::pin::Pin::new(&mut *tls_stream)
                     .write_all(&close_pkt.to_bytes())
                     .await
                     .context("Failed to send SSTP CLOSE")?;

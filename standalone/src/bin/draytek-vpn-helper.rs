@@ -187,9 +187,9 @@ fn validate_cidr(cidr: &str) -> Result<(), Box<dyn std::error::Error>> {
     if parts.len() != 2 {
         return Err(format!("Invalid CIDR format: {cidr}").into());
     }
-    parts[0].parse::<Ipv4Addr>().map_err(|e| {
-        format!("Invalid IP in CIDR '{cidr}': {e}")
-    })?;
+    parts[0]
+        .parse::<Ipv4Addr>()
+        .map_err(|e| format!("Invalid IP in CIDR '{cidr}': {e}"))?;
     let prefix: u8 = parts[1]
         .parse()
         .map_err(|e| format!("Invalid prefix in CIDR '{cidr}': {e}"))?;
@@ -273,24 +273,41 @@ fn cmd_setup(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Create TUN device owned by user (remove stale device from prior session if present)
     if std::path::Path::new(&format!("/sys/class/net/{}", setup.device)).exists() {
         eprintln!("Note: removing stale {} device", setup.device);
-        let _ = run_cmd("ip", &["tuntap", "del", "dev", &setup.device, "mode", "tun"]);
+        let _ = run_cmd(
+            "ip",
+            &["tuntap", "del", "dev", &setup.device, "mode", "tun"],
+        );
     }
     run_cmd(
         "ip",
-        &["tuntap", "add", "dev", &setup.device, "mode", "tun", "user", &uid_str],
+        &[
+            "tuntap",
+            "add",
+            "dev",
+            &setup.device,
+            "mode",
+            "tun",
+            "user",
+            &uid_str,
+        ],
     )?;
 
     // 2. Configure IP address
     run_cmd(
         "ip",
-        &["addr", "add", &local_ip_str, "peer", &peer_ip_str, "dev", &setup.device],
+        &[
+            "addr",
+            "add",
+            &local_ip_str,
+            "peer",
+            &peer_ip_str,
+            "dev",
+            &setup.device,
+        ],
     )?;
 
     // 3. Set MTU and bring up
-    run_cmd(
-        "ip",
-        &["link", "set", &setup.device, "mtu", &mtu_str, "up"],
-    )?;
+    run_cmd("ip", &["link", "set", &setup.device, "mtu", &mtu_str, "up"])?;
 
     // 4. Add routes
     for route in &setup.routes {
@@ -302,7 +319,15 @@ fn cmd_setup(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         let gw_str = gw.to_string();
         run_cmd(
             "ip",
-            &["route", "add", "default", "via", &gw_str, "dev", &setup.device],
+            &[
+                "route",
+                "add",
+                "default",
+                "via",
+                &gw_str,
+                "dev",
+                &setup.device,
+            ],
         )?;
     }
 
@@ -314,7 +339,9 @@ fn cmd_setup(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("resolvectl not available or failed, falling back to /etc/resolv.conf");
             match direct_dns_setup(dns_ip) {
                 Ok(()) => eprintln!("DNS configured via /etc/resolv.conf: {dns_ip}"),
-                Err(e) => eprintln!("Warning: DNS configuration failed: {e} — continuing without DNS"),
+                Err(e) => {
+                    eprintln!("Warning: DNS configuration failed: {e} — continuing without DNS")
+                }
             }
         }
     }
@@ -345,7 +372,9 @@ fn cmd_check() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("capability check: CAP_NET_ADMIN is present in effective set (CapEff={hex_str})");
         Ok(())
     } else {
-        eprintln!("capability check: CAP_NET_ADMIN is NOT present in effective set (CapEff={hex_str})");
+        eprintln!(
+            "capability check: CAP_NET_ADMIN is NOT present in effective set (CapEff={hex_str})"
+        );
         Err("CAP_NET_ADMIN not present".into())
     }
 }
@@ -376,7 +405,10 @@ fn cmd_teardown(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // 4. Restore DNS (try both methods — safe no-ops if nothing to do)
     if teardown.restore_dns {
         // Try resolvectl revert (no-op if resolvectl wasn't used or device is gone)
-        match Command::new("resolvectl").args(["revert", &teardown.device]).output() {
+        match Command::new("resolvectl")
+            .args(["revert", &teardown.device])
+            .output()
+        {
             Ok(output) if output.status.success() => {
                 eprintln!("+ Reverted DNS via resolvectl for {}", teardown.device);
             }

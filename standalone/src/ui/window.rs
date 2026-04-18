@@ -62,9 +62,7 @@ impl MainWindow {
         dropdown_box.set_margin_end(16);
         dropdown_box.set_margin_top(8);
 
-        let profile_dropdown = gtk4::DropDown::builder()
-            .hexpand(true)
-            .build();
+        let profile_dropdown = gtk4::DropDown::builder().hexpand(true).build();
 
         let add_btn = gtk4::Button::builder()
             .icon_name("list-add-symbolic")
@@ -109,11 +107,9 @@ impl MainWindow {
             let dropdown = profile_dropdown.clone();
             move || {
                 let cfg = config.borrow();
-                let names: Vec<String> =
-                    cfg.profiles.iter().map(|p| p.name.clone()).collect();
-                let model = gtk4::StringList::new(
-                    &names.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                );
+                let names: Vec<String> = cfg.profiles.iter().map(|p| p.name.clone()).collect();
+                let model =
+                    gtk4::StringList::new(&names.iter().map(|s| s.as_str()).collect::<Vec<_>>());
                 dropdown.set_model(Some(&model));
                 if let Some(idx) = cfg.last_selected {
                     if idx < cfg.profiles.len() {
@@ -250,7 +246,10 @@ impl MainWindow {
                 // then pokes the GLib main loop to drain it.
                 let queue = status_queue.clone();
                 let status_tx = GlibSender::new(move |status: TunnelStatus| {
-                    queue.lock().expect("status queue lock poisoned").push(status);
+                    queue
+                        .lock()
+                        .expect("status queue lock poisoned")
+                        .push(status);
                 });
 
                 // Spawn tunnel task

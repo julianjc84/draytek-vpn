@@ -12,19 +12,22 @@ const SERVICE_TYPE: &str = "org.freedesktop.NetworkManager.draytek";
 
 // ── VPN state shared with the tray ──────────────────────────────────
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Default)]
 pub enum VpnState {
+    #[default]
     Disconnected,
-    Connecting { name: String },
-    Connected { name: String, ip: String, gateway: String, routes: Vec<String>, path: OwnedObjectPath, connected_at: u64, keepalive: bool },
-    Disconnecting,
-}
-
-impl Default for VpnState {
-    fn default() -> Self {
-        Self::Disconnected
-    }
+    Connecting {
+        name: String,
+    },
+    Connected {
+        name: String,
+        ip: String,
+        gateway: String,
+        routes: Vec<String>,
+        path: OwnedObjectPath,
+        connected_at: u64,
+        keepalive: bool,
+    },
 }
 
 // ── NM D-Bus proxy traits ───────────────────────────────────────────
@@ -88,14 +91,10 @@ trait VpnConnection {
 )]
 trait Ip4Config {
     #[zbus(property)]
-    fn address_data(
-        &self,
-    ) -> zbus::Result<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>;
+    fn address_data(&self) -> zbus::Result<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>;
 
     #[zbus(property)]
-    fn route_data(
-        &self,
-    ) -> zbus::Result<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>;
+    fn route_data(&self) -> zbus::Result<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>;
 }
 
 /// org.freedesktop.NetworkManager.Settings.Connection
@@ -167,14 +166,18 @@ pub async fn monitor_vpn(state_tx: watch::Sender<VpnState>) -> Result<()> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         loop {
             match changes.next().now_or_never() {
-                Some(Some(_)) => continue,  // drain buffered event
+                Some(Some(_)) => continue,   // drain buffered event
                 Some(None) => return Ok(()), // stream ended
                 None => break,               // no more buffered events
             }
         }
 
         // Skip if we already have a watcher — no need to rescan
-        if !watched.lock().unwrap().is_empty() {
+        if !watched
+            .lock()
+            .expect("watched-paths lock poisoned")
+            .is_empty()
+        {
             continue;
         }
 
@@ -202,7 +205,11 @@ async fn check_active_connections(
 
     for path in &active_paths {
         // Skip paths we're already watching
-        if watched.lock().unwrap().contains(path) {
+        if watched
+            .lock()
+            .expect("watched-paths lock poisoned")
+            .contains(path)
+        {
             found_draytek = true;
             continue;
         }
@@ -211,7 +218,10 @@ async fn check_active_connections(
             found_draytek = true;
 
             // Mark as watched before spawning
-            watched.lock().unwrap().insert(path.clone());
+            watched
+                .lock()
+                .expect("watched-paths lock poisoned")
+                .insert(path.clone());
             info!("watching DrayTek VPN connection: {} at {}", info.name, path);
 
             let conn2 = conn.clone();
@@ -224,7 +234,10 @@ async fn check_active_connections(
                     warn!("VPN connection watcher ended: {e}");
                 }
                 // Remove from watched set and signal disconnected
-                watched2.lock().unwrap().remove(&path2);
+                watched2
+                    .lock()
+                    .expect("watched-paths lock poisoned")
+                    .remove(&path2);
                 let _ = state_tx2.send(VpnState::Disconnected);
             });
         }
@@ -312,7 +325,13 @@ async fn watch_vpn_connection(
     let mut signal_stream = vpn_conn.receive_vpn_state_changed().await?;
 
     while let Some(signal) = signal_stream.next().await {
-        let args = signal.args().expect("failed to parse VpnStateChanged args");
+        let args = match signal.args() {
+            Ok(a) => a,
+            Err(e) => {
+                warn!("Skipping malformed VpnStateChanged signal: {e}");
+                continue;
+            }
+        };
         let state = *args.state();
         let reason = *args.reason();
         debug!("VpnStateChanged: state={state} reason={reason}");
@@ -337,9 +356,12 @@ async fn handle_vpn_state(
     ac: &ActiveConnectionProxy<'_>,
 ) {
     let new_state = match state {
-        vpn_conn_state::PREPARE | vpn_conn_state::NEED_AUTH | vpn_conn_state::CONNECT | vpn_conn_state::IP_CONFIG_GET => {
-            VpnState::Connecting { name: name.to_string() }
-        }
+        vpn_conn_state::PREPARE
+        | vpn_conn_state::NEED_AUTH
+        | vpn_conn_state::CONNECT
+        | vpn_conn_state::IP_CONFIG_GET => VpnState::Connecting {
+            name: name.to_string(),
+        },
         vpn_conn_state::ACTIVATED => {
             let ip = read_ip(conn, ac).await.unwrap_or_default();
             let gateway = read_vpn_gateway(conn, ac).await.unwrap_or_default();
@@ -414,7 +436,11 @@ async fn read_routes(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Optio
         })
         .collect();
 
-    if routes.is_empty() { None } else { Some(routes) }
+    if routes.is_empty() {
+        None
+    } else {
+        Some(routes)
+    }
 }
 
 /// Read the VPN gateway (server address) from the connection's vpn.data settings.
@@ -432,7 +458,10 @@ async fn read_vpn_gateway(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> 
     let vpn_section = settings.get("vpn")?;
     let data: HashMap<String, String> = vpn_section.get("data")?.clone().try_into().ok()?;
     let gateway = data.get("gateway")?.clone();
-    let port = data.get("port").cloned().unwrap_or_else(|| "443".to_string());
+    let port = data
+        .get("port")
+        .cloned()
+        .unwrap_or_else(|| "443".to_string());
     Some(format!("{gateway}:{port}"))
 }
 
@@ -455,7 +484,10 @@ async fn read_vpn_keepalive(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -
 
 /// Read the activation timestamp from the connection's settings.
 /// NM stores `connection.timestamp` as a Unix epoch (seconds) updated on activation.
-async fn read_connection_timestamp(conn: &Connection, ac: &ActiveConnectionProxy<'_>) -> Option<u64> {
+async fn read_connection_timestamp(
+    conn: &Connection,
+    ac: &ActiveConnectionProxy<'_>,
+) -> Option<u64> {
     let settings_path = ac.connection().await.ok()?;
     let sc = SettingsConnectionProxy::builder(conn)
         .path(settings_path.as_ref())
@@ -586,9 +618,7 @@ pub async fn connect_vpn(settings_path: &OwnedObjectPath) -> Result<()> {
         .build()
         .await?;
 
-    let root: OwnedObjectPath = zbus::zvariant::ObjectPath::try_from("/")
-        .unwrap()
-        .into();
+    let root: OwnedObjectPath = zbus::zvariant::ObjectPath::try_from("/").unwrap().into();
 
     nm.activate_connection(settings_path, &root, &root)
         .await

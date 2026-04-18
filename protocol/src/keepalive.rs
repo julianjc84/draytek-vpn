@@ -1,4 +1,5 @@
-/// Keepalive timer: 10s idle → send REQUEST, 3 missed → disconnect.
+//! Keepalive timer: 10s idle → send REQUEST, 3 missed → disconnect.
+
 use crate::constants::{KEEPALIVE_INTERVAL_SECS, KEEPALIVE_MAX_MISSED};
 use tokio::time::{Duration, Instant};
 
@@ -11,6 +12,12 @@ pub struct KeepaliveTracker {
     last_tun_activity: Instant,
     /// When we last received any data from the SSL socket.
     last_socket_activity: Instant,
+}
+
+impl Default for KeepaliveTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeepaliveTracker {

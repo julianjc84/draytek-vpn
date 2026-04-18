@@ -239,7 +239,6 @@ These go in `vpn.data` when creating a connection via `nmcli`:
 | `route-remote-network` | `yes` | Auto-route the remote gateway's /24 subnet |
 | `never-default` | `yes` | Don't replace the default route with the VPN |
 | `keepalive` | `no` | Enable ICMP keepalive pings |
-| `auto-reconnect` | `no` | Automatically reconnect on disconnect |
 | `routes` | *(empty)* | Additional routes in CIDR notation, comma-separated (e.g. `10.0.0.0/8,172.16.0.0/12`) |
 
 Password is stored in `vpn.secrets` under the key `password`.
