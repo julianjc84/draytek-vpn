@@ -6,11 +6,12 @@ mod tray_impl;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ksni::TrayMethods;
 use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
 use zbus::zvariant::OwnedObjectPath;
+use zbus::Connection;
 
 use nm_monitor::VpnState;
 use tray_impl::VpnTray;
@@ -26,12 +27,19 @@ async fn main() -> Result<()> {
 
     info!("DrayTek VPN tray indicator starting");
 
+    // One system-bus connection shared across all subsystems for the lifetime
+    // of the process. Opening a fresh `Connection::system()` per helper call
+    // exhausted the per-UID dbus connection limit on long-running sessions.
+    let conn = Connection::system()
+        .await
+        .context("failed to connect to system D-Bus")?;
+
     let (state_tx, state_rx) = watch::channel(VpnState::Disconnected);
     let (disconnect_tx, mut disconnect_rx) = mpsc::unbounded_channel::<OwnedObjectPath>();
     let (connect_tx, mut connect_rx) = mpsc::unbounded_channel::<OwnedObjectPath>();
 
     // Fetch saved DrayTek VPN connections for the menu
-    let saved_vpns = nm_monitor::list_saved_vpns().await;
+    let saved_vpns = nm_monitor::list_saved_vpns(&conn).await;
     info!("found {} saved DrayTek VPN connection(s)", saved_vpns.len());
 
     let tray = VpnTray {
@@ -48,9 +56,11 @@ async fn main() -> Result<()> {
 
     // Task 1: Monitor NM for DrayTek VPN connections
     let monitor_tx = state_tx.clone();
+    let monitor_conn = conn.clone();
     tokio::spawn(async move {
         loop {
-            if let Err(e) = nm_monitor::monitor_vpn(monitor_tx.clone()).await {
+            if let Err(e) = nm_monitor::monitor_vpn(monitor_conn.clone(), monitor_tx.clone()).await
+            {
                 error!("NM monitor error: {e:#}");
             }
             // Retry after a delay
@@ -60,10 +70,11 @@ async fn main() -> Result<()> {
     });
 
     // Task 2: Handle disconnect requests
+    let disconnect_conn = conn.clone();
     tokio::spawn(async move {
         while let Some(path) = disconnect_rx.recv().await {
             info!("disconnect requested for {path}");
-            if let Err(e) = nm_monitor::disconnect_vpn(&path).await {
+            if let Err(e) = nm_monitor::disconnect_vpn(&disconnect_conn, &path).await {
                 error!("disconnect failed: {e:#}");
             }
         }
@@ -71,10 +82,11 @@ async fn main() -> Result<()> {
 
     // Task 3: Handle connect requests
     let handle2 = handle.clone();
+    let connect_conn = conn.clone();
     tokio::spawn(async move {
         while let Some(path) = connect_rx.recv().await {
             info!("connect requested for {path}");
-            if let Err(e) = nm_monitor::connect_vpn(&path).await {
+            if let Err(e) = nm_monitor::connect_vpn(&connect_conn, &path).await {
                 error!("connect failed: {e:#}");
             }
         }
@@ -114,7 +126,7 @@ async fn main() -> Result<()> {
 
                 // Refresh saved VPNs list when transitioning to disconnected
                 let saved = if matches!(new_state, VpnState::Disconnected) {
-                    Some(nm_monitor::list_saved_vpns().await)
+                    Some(nm_monitor::list_saved_vpns(&conn).await)
                 } else {
                     None
                 };

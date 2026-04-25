@@ -133,15 +133,12 @@ mod vpn_conn_state {
 // ── Monitor loop ────────────────────────────────────────────────────
 
 /// Monitor NM for DrayTek VPN connections and push state changes.
-pub async fn monitor_vpn(state_tx: watch::Sender<VpnState>) -> Result<()> {
-    let conn = Connection::system()
-        .await
-        .context("failed to connect to system D-Bus")?;
-
-    let nm = NetworkManagerProxy::builder(&conn)
-        .cache_properties(CacheProperties::No)
-        .build()
-        .await?;
+pub async fn monitor_vpn(conn: Connection, state_tx: watch::Sender<VpnState>) -> Result<()> {
+    // Default `CacheProperties::Lazily` — wires up the PropertiesChanged
+    // subscription that backs `receive_active_connections_changed()`. With
+    // `CacheProperties::No` the property-change stream ends on first poll,
+    // putting the monitor in a 5-second restart loop.
+    let nm = NetworkManagerProxy::builder(&conn).build().await?;
 
     // Track which connection paths already have a watcher task
     let watched: Arc<Mutex<HashSet<OwnedObjectPath>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -244,7 +241,18 @@ async fn check_active_connections(
     }
 
     if !found_draytek {
-        let _ = state_tx.send(VpnState::Disconnected);
+        // Don't re-broadcast Disconnected when already disconnected. NM emits
+        // ActiveConnections changes for unrelated events (wifi blips, IP renewals);
+        // each redundant send wakes the main loop and used to trigger a fresh
+        // bus-connection-per-refetch, exhausting the per-UID dbus connection limit.
+        state_tx.send_if_modified(|cur| {
+            if matches!(cur, VpnState::Disconnected) {
+                false
+            } else {
+                *cur = VpnState::Disconnected;
+                true
+            }
+        });
     }
 }
 
@@ -504,12 +512,8 @@ async fn read_connection_timestamp(
 }
 
 /// Disconnect a VPN connection by calling DeactivateConnection on NM.
-pub async fn disconnect_vpn(path: &OwnedObjectPath) -> Result<()> {
-    let conn = Connection::system()
-        .await
-        .context("failed to connect to system D-Bus")?;
-
-    let nm = NetworkManagerProxy::builder(&conn)
+pub async fn disconnect_vpn(conn: &Connection, path: &OwnedObjectPath) -> Result<()> {
+    let nm = NetworkManagerProxy::builder(conn)
         .cache_properties(CacheProperties::No)
         .build()
         .await?;
@@ -532,8 +536,8 @@ pub struct SavedVpn {
 }
 
 /// List all saved DrayTek VPN connections from NM Settings.
-pub async fn list_saved_vpns() -> Vec<SavedVpn> {
-    match list_saved_vpns_inner().await {
+pub async fn list_saved_vpns(conn: &Connection) -> Vec<SavedVpn> {
+    match list_saved_vpns_inner(conn).await {
         Ok(vpns) => vpns,
         Err(e) => {
             warn!("failed to list saved VPN connections: {e}");
@@ -542,12 +546,8 @@ pub async fn list_saved_vpns() -> Vec<SavedVpn> {
     }
 }
 
-async fn list_saved_vpns_inner() -> Result<Vec<SavedVpn>> {
-    let conn = Connection::system()
-        .await
-        .context("failed to connect to system D-Bus")?;
-
-    let settings = SettingsProxy::builder(&conn)
+async fn list_saved_vpns_inner(conn: &Connection) -> Result<Vec<SavedVpn>> {
+    let settings = SettingsProxy::builder(conn)
         .cache_properties(CacheProperties::No)
         .build()
         .await?;
@@ -556,7 +556,7 @@ async fn list_saved_vpns_inner() -> Result<Vec<SavedVpn>> {
     let mut vpns = Vec::new();
 
     for path in &paths {
-        let sc = match SettingsConnectionProxy::builder(&conn)
+        let sc = match SettingsConnectionProxy::builder(conn)
             .path(path.as_ref())
             .ok()
             .map(|b| b.cache_properties(CacheProperties::No))
@@ -608,12 +608,8 @@ async fn list_saved_vpns_inner() -> Result<Vec<SavedVpn>> {
 }
 
 /// Activate a saved VPN connection.
-pub async fn connect_vpn(settings_path: &OwnedObjectPath) -> Result<()> {
-    let conn = Connection::system()
-        .await
-        .context("failed to connect to system D-Bus")?;
-
-    let nm = NetworkManagerProxy::builder(&conn)
+pub async fn connect_vpn(conn: &Connection, settings_path: &OwnedObjectPath) -> Result<()> {
+    let nm = NetworkManagerProxy::builder(conn)
         .cache_properties(CacheProperties::No)
         .build()
         .await?;
