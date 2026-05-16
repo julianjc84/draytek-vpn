@@ -95,7 +95,7 @@ Everything is managed through `./build.sh`:
 | Target | What it builds |
 |--------|----------------|
 | `app` | GUI app + privileged helper |
-| `nm` | NetworkManager plugin (Rust service + C editor + C auth-dialog + tray dispatcher) |
+| `nm` | NetworkManager plugin (Rust service + C editor + C auth-dialog) |
 | `tray` | System tray indicator binary (installed automatically by `nm install`, use this to rebuild the binary only) |
 | `arch` | Arch Linux package via `makepkg` (wraps `packaging/arch/PKGBUILD`) |
 | `all` | All of the above |
@@ -149,7 +149,7 @@ Everything is managed through `./build.sh`:
 ./build.sh app appimage
 # → DrayTek_VPN-x86_64.AppImage
 
-# Build .deb for the NetworkManager plugin (includes tray + dispatcher)
+# Build .deb for the NetworkManager plugin (includes tray + XDG autostart)
 ./build.sh nm deb
 # → target/deb-nm/draytek-vpn-nm_0.1.0_amd64.deb
 
@@ -284,11 +284,12 @@ draytek-vpn/
 │   ├── auth-dialog/                #   C auth dialog
 │   ├── data/
 │   │   ├── nm-draytek-service.name #     NM plugin metadata
-│   │   ├── nm-draytek-service.conf #     D-Bus policy
-│   │   └── 90-draytek-vpn-tray    #     NM dispatcher (auto-launches tray)
+│   │   └── nm-draytek-service.conf #     D-Bus policy
 │   └── build_deb.sh               #   .deb package builder
 │
 ├── networkmanagertray/             # System tray indicator (Rust)
+│   ├── data/
+│   │   └── draytek-vpn-tray.desktop #    XDG autostart entry → /etc/xdg/autostart/
 │   └── src/
 │       ├── nm_monitor.rs           #   NM D-Bus monitor
 │       ├── tray_impl.rs            #   Menu and status rendering

@@ -55,7 +55,7 @@ NM_VPN_DIR="/usr/lib/NetworkManager/VPN"
 NM_SERVICE_DIR="/usr/lib/NetworkManager"
 DBUS_CONF_DIR="/etc/dbus-1/system.d"
 LIBEXEC_DIR="/usr/libexec"
-NM_DISPATCHER_DIR="/etc/NetworkManager/dispatcher.d"
+XDG_AUTOSTART_DIR="/etc/xdg/autostart"
 
 # ── Colors ─────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -162,13 +162,10 @@ nm_install() {
         "$NM_VPN_DIR/"
     sudo install -m 644 networkmanager/data/nm-draytek-service.conf \
         "$DBUS_CONF_DIR/"
-    sudo install -m 755 networkmanager/data/90-draytek-vpn-tray \
-        "$NM_DISPATCHER_DIR/"
 
     info "Restarting NetworkManager..."
     sudo systemctl restart NetworkManager
     info "Installed. DrayTek SSL VPN should appear in GNOME Settings > VPN."
-    info "Tray indicator will auto-launch on VPN connect (requires draytek-vpn-tray in /usr/bin)."
 }
 
 nm_deb() {
@@ -188,7 +185,7 @@ nm_uninstall() {
     sudo rm -f "$LIBEXEC_DIR/nm-draytek-auth-dialog"
     sudo rm -f "$NM_VPN_DIR/nm-draytek-service.name"
     sudo rm -f "$DBUS_CONF_DIR/nm-draytek-service.conf"
-    sudo rm -f "$NM_DISPATCHER_DIR/90-draytek-vpn-tray"
+    sudo rm -f /etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray
 
     info "Restarting NetworkManager..."
     sudo systemctl restart NetworkManager
@@ -216,14 +213,18 @@ tray_install() {
     header "Install Tray Indicator"
     info "Installing binary (requires sudo)"
     sudo install -m 755 target/release/draytek-vpn-tray /usr/bin/
+    info "Installing XDG autostart entry"
+    sudo install -Dm 644 networkmanagertray/data/draytek-vpn-tray.desktop \
+        "$XDG_AUTOSTART_DIR/draytek-vpn-tray.desktop"
 
-    info "Installed. Tray launches automatically on VPN connect (via NM dispatcher)."
+    info "Installed. Tray starts on next session login (or run draytek-vpn-tray now)."
 }
 
 tray_uninstall() {
     header "Uninstall Tray Indicator"
     info "Removing files"
     sudo rm -f /usr/bin/draytek-vpn-tray
+    sudo rm -f "$XDG_AUTOSTART_DIR/draytek-vpn-tray.desktop"
     info "Uninstalled."
 }
 

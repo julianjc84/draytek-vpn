@@ -46,6 +46,31 @@ install_deps() {
         done
         echo "Installing: ${FEDORA_PACKAGES[*]}"
         sudo dnf install -y "${FEDORA_PACKAGES[@]}"
+    elif command -v pacman &>/dev/null; then
+        echo "Detected Arch — using pacman"
+        # Map Debian package names to Arch equivalents. On Arch, libnm
+        # ships inside the networkmanager package, and libadwaita's headers
+        # ship with the runtime package (no -dev split).
+        declare -A ARCH_MAP=(
+            [build-essential]="base-devel"
+            [pkg-config]="pkgconf"
+            [libgtk-4-dev]="gtk4"
+            [libgtk-3-dev]="gtk3"
+            [libadwaita-1-dev]="libadwaita"
+            [libssl-dev]="openssl"
+            [libnm-dev]="networkmanager"
+        )
+        ARCH_PACKAGES=()
+        for pkg in "${PACKAGES[@]}"; do
+            if [[ -n "${ARCH_MAP[$pkg]+x}" ]]; then
+                # shellcheck disable=SC2206
+                ARCH_PACKAGES+=(${ARCH_MAP[$pkg]})
+            else
+                ARCH_PACKAGES+=("$pkg")
+            fi
+        done
+        echo "Installing: ${ARCH_PACKAGES[*]}"
+        sudo pacman -S --needed --noconfirm "${ARCH_PACKAGES[@]}"
     else
         echo "Error: Unsupported package manager. Install these packages manually:"
         printf '  %s\n' "${PACKAGES[@]}"

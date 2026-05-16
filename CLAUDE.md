@@ -9,7 +9,7 @@ Cargo workspace with four members:
 - `protocol/` — `draytek-vpn-protocol` lib: TLS connect, SSTP framing, PPP FSM, LCP/IPCP/auth (PAP + MS-CHAPv2), keepalive. Used by all binaries.
 - `standalone/` — `draytek-vpn` GTK4/libadwaita desktop app + `draytek-vpn-helper` (Polkit-elevated for TUN/routes/DNS). `standalone/src/tunnel/engine.rs` is the GUI data loop.
 - `networkmanager/` — `draytek-vpn-nm` VPN plugin on the system D-Bus (runs as root under NM). GTK3/GTK4 editor `.so` and auth-dialog are C (`networkmanager/editor/`, `networkmanager/auth-dialog/`). `networkmanager/src/tunnel.rs` is the NM data loop.
-- `networkmanagertray/` — `draytek-vpn-tray` ksni StatusNotifier tray. Watches NM over D-Bus (`nm_monitor.rs`), renders via `tray_impl.rs`. Launched/killed by `networkmanager/data/90-draytek-vpn-tray` dispatcher script on vpn-up/vpn-down.
+- `networkmanagertray/` — `draytek-vpn-tray` ksni StatusNotifier tray. Watches NM over D-Bus (`nm_monitor.rs`), renders via `tray_impl.rs`. Autostarts on session login via `networkmanagertray/data/draytek-vpn-tray.desktop` installed to `/etc/xdg/autostart/`. Single-instance via the well-known session-bus name `com.draytek.vpn.Tray` (DoNotQueue): second invocation exits cleanly.
 
 ## Build & Test
 
@@ -39,7 +39,7 @@ Release profile is defined at workspace root (`Cargo.toml`), not in any member c
 
 ```bash
 ./build.sh all install          # builds + installs everything; NM restarts itself
-nmcli connection up <name>      # trigger the NM plugin; tray auto-launches via dispatcher
+nmcli connection up <name>      # trigger the NM plugin; tray (already running via XDG autostart) shows status
 journalctl -u NetworkManager -f # tail plugin logs
 ```
 

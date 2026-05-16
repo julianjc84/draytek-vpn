@@ -1,7 +1,7 @@
 # Maintainer: Julian <julian@jc84.com>
 pkgname=draytek-vpn-networkmanager
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="DrayTek SSL VPN NetworkManager plugin (service, editor, auth-dialog, tray)"
 arch=('x86_64')
 url="https://github.com/"
@@ -78,13 +78,14 @@ package() {
     install -Dm644 networkmanager/data/nm-draytek-service.conf \
         "$pkgdir/usr/share/dbus-1/system.d/nm-draytek-service.conf"
 
-    # Dispatcher script (auto-launches tray on connect)
-    install -Dm755 networkmanager/data/90-draytek-vpn-tray \
-        "$pkgdir/etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray"
-
     # Tray binary
     install -Dm755 target/release/draytek-vpn-tray \
         "$pkgdir/usr/bin/draytek-vpn-tray"
+
+    # XDG autostart entry — tray runs from session login on every DE that
+    # honors XDG autostart (KDE, GNOME, XFCE, Cinnamon, MATE, LXQt).
+    install -Dm644 networkmanagertray/data/draytek-vpn-tray.desktop \
+        "$pkgdir/etc/xdg/autostart/draytek-vpn-tray.desktop"
 
     # License
     install -Dm644 LICENSE \

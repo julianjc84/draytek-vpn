@@ -23,7 +23,7 @@ download), so run it from this directory. `-s` pulls build dependencies,
 | NM service registration | `/usr/lib/NetworkManager/VPN/nm-draytek-service.name` |
 | D-Bus system policy | `/usr/share/dbus-1/system.d/nm-draytek-service.conf` |
 | Tray binary | `/usr/bin/draytek-vpn-tray` |
-| NM dispatcher (auto-launches tray on connect) | `/etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray` |
+| XDG autostart entry (tray runs on session login) | `/etc/xdg/autostart/draytek-vpn-tray.desktop` |
 
 NetworkManager is restarted automatically on install/upgrade/remove via the
 `.install` hook.

@@ -10,13 +10,21 @@ post_install() {
     cat <<EOF
 >>> DrayTek SSL VPN plugin installed.
     Create a connection in GNOME Settings, nm-connection-editor, or via nmcli.
-    The tray indicator auto-launches on VPN connect; it needs an SNI host
-    (e.g. waybar with the tray module) to be visible.
+    The tray indicator (draytek-vpn-tray) is registered for XDG autostart and
+    will appear on your next session login. To start it now without logging
+    out, run: draytek-vpn-tray &
+    It needs an SNI host (KDE/GNOME tray, waybar with the tray module, etc.)
+    to be visible.
 EOF
 }
 
 post_upgrade() {
     _restart_nm
+    # Clean up the old NM dispatcher script from <= pkgrel 1, which used to
+    # launch/kill the tray on vpn-up/vpn-down. The tray now autostarts and
+    # the dispatcher kill-on-down was the root cause of the tray vanishing
+    # after disconnect.
+    rm -f /etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray
 }
 
 pre_remove() {

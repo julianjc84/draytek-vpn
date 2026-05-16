@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build a .deb package for the DrayTek VPN NetworkManager plugin.
 # Includes: NM service, editor .so files, auth-dialog, tray binary,
-# dispatcher script, D-Bus config, and NM service name file.
+# XDG autostart entry, D-Bus config, and NM service name file.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -33,7 +33,7 @@ mkdir -p "$PKG_DIR/usr/lib/x86_64-linux-gnu/NetworkManager"
 mkdir -p "$PKG_DIR/usr/libexec"
 mkdir -p "$PKG_DIR/usr/bin"
 mkdir -p "$PKG_DIR/etc/dbus-1/system.d"
-mkdir -p "$PKG_DIR/etc/NetworkManager/dispatcher.d"
+mkdir -p "$PKG_DIR/etc/xdg/autostart"
 
 # ── Copy files ────────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ install -m 644 networkmanager/data/nm-draytek-service.name \
     "$PKG_DIR/usr/lib/NetworkManager/VPN/"
 install -m 644 networkmanager/data/nm-draytek-service.conf \
     "$PKG_DIR/etc/dbus-1/system.d/"
-install -m 755 networkmanager/data/90-draytek-vpn-tray \
-    "$PKG_DIR/etc/NetworkManager/dispatcher.d/"
+install -m 644 networkmanagertray/data/draytek-vpn-tray.desktop \
+    "$PKG_DIR/etc/xdg/autostart/"
 
 # ── Calculate installed size ──────────────────────────────────────
 INSTALLED_SIZE=$(du -sk "$PKG_DIR" | awk '{print $1}')
@@ -81,13 +81,17 @@ Depends: network-manager, libssl3, libnm0, libgtk-4-1, libgtk-3-0
 Description: DrayTek SSL VPN NetworkManager plugin
  Integrates DrayTek SSL VPN into NetworkManager so VPN connections
  appear in GNOME Settings, KDE, Cinnamon, or any NM frontend.
- Includes a system tray indicator that auto-launches on VPN connect.
+ Includes a system tray indicator that autostarts on session login.
 EOF
 
 # ── Write post-install script ─────────────────────────────────────
 cat > "$PKG_DIR/DEBIAN/postinst" << 'EOF'
 #!/bin/bash
 set -e
+# Clean up the old NM dispatcher script from prior versions, which used to
+# launch/kill the tray on vpn-up/vpn-down. The tray now autostarts and the
+# kill-on-down was the root cause of the tray vanishing after disconnect.
+rm -f /etc/NetworkManager/dispatcher.d/90-draytek-vpn-tray
 # Restart NetworkManager to pick up the new plugin
 if systemctl is-active --quiet NetworkManager; then
     systemctl restart NetworkManager

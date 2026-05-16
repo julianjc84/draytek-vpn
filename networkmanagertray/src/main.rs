@@ -10,11 +10,17 @@ use anyhow::{Context, Result};
 use ksni::TrayMethods;
 use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
+use zbus::fdo::{RequestNameFlags, RequestNameReply};
 use zbus::zvariant::OwnedObjectPath;
 use zbus::Connection;
 
 use nm_monitor::VpnState;
 use tray_impl::VpnTray;
+
+/// Well-known session-bus name claimed at startup. Acts as the single-instance
+/// guard: if another tray already owns the name, the second invocation exits
+/// cleanly rather than producing a duplicate tray icon.
+const SINGLE_INSTANCE_BUS_NAME: &str = "com.draytek.vpn.Tray";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,6 +32,33 @@ async fn main() -> Result<()> {
         .init();
 
     info!("DrayTek VPN tray indicator starting");
+
+    // Single-instance guard. Acquire a well-known name on the session bus with
+    // DoNotQueue; if another instance already owns it, exit cleanly. zbus 5.x
+    // surfaces "name taken" two ways depending on internal path — as
+    // Ok(RequestNameReply::Exists/InQueue) or as Err(zbus::Error::NameTaken) —
+    // so we collapse both into one "already running" branch. The session
+    // connection is held for the lifetime of main(); dropping it would
+    // release the name and let a second instance acquire it.
+    let session = Connection::session()
+        .await
+        .context("failed to connect to session D-Bus")?;
+    match session
+        .request_name_with_flags(
+            SINGLE_INSTANCE_BUS_NAME,
+            RequestNameFlags::DoNotQueue.into(),
+        )
+        .await
+    {
+        Ok(RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner) => {
+            info!("acquired {SINGLE_INSTANCE_BUS_NAME} on session bus");
+        }
+        Ok(_) | Err(zbus::Error::NameTaken) => {
+            info!("another draytek-vpn-tray is already running; exiting");
+            return Ok(());
+        }
+        Err(e) => return Err(e).context("failed to request session-bus name"),
+    }
 
     // One system-bus connection shared across all subsystems for the lifetime
     // of the process. Opening a fresh `Connection::system()` per helper call

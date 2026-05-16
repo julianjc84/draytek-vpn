@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=DrayTek VPN Tray
+Comment=Status tray for DrayTek SSL VPN connections
+Exec=/usr/bin/draytek-vpn-tray
+Icon=network-vpn
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
+OnlyShowIn=GNOME;KDE;XFCE;Cinnamon;MATE;LXQt;Pantheon;Deepin;Budgie;Unity;X-Cinnamon;
+Categories=Network;
